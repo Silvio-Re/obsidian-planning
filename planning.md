@@ -172,33 +172,144 @@ function computeSchedule(items, locks, today, SCHEDULE) {
         meetData.push({ ...lk });
     });
 
-    // First pass: Identify late tasks
-    const allocator1 = createAllocator(today, workDays, meetIv, SCHEDULE);
-    const schedInitial = items.map(it => ({ ...it })).sort((a, b) => a.deadline - b.deadline || b.duration - a.duration);
-    schedInitial.forEach(s => {
-        s.dlIdx = s.deadline.diff(today, "days").days;
-        s.segs = s.duration <= 0 ? [{ calS: s.dlIdx, calE: s.dlIdx }] : allocator1.allocate(s.duration);
-        s.startCal = s.segs.length ? s.segs[0].calS : s.dlIdx;
-        s.endCal = s.segs.length ? s.segs[s.segs.length - 1].calE : s.dlIdx;
-        s.late = s.endCal > s.dlIdx + 1;
-    });
-
-    // Second pass: Priority-aware ordering
-    allocator1.reset();
-    const sched = items.map(it => ({ ...it })).sort((a, b) => {
-        if (!a.late && !b.late) return a.deadline - b.deadline || b.duration - a.duration;
-        if (!a.late) return -1; if (!b.late) return 1;
-        if (a.priority !== b.priority) return a.priority - b.priority;
-        return a.deadline - b.deadline || b.duration - a.duration;
-    });
-
-    sched.forEach(s => {
-        s.dlIdx = s.deadline.diff(today, "days").days;
-        s.segs = s.duration <= 0 ? [{ calS: s.dlIdx, calE: s.dlIdx }] : allocator1.allocate(s.duration);
-        s.startCal = s.segs.length ? s.segs[0].calS : s.dlIdx;
-        s.endCal = s.segs.length ? s.segs[s.segs.length - 1].calE : s.dlIdx;
-        s.late = s.endCal > s.dlIdx + 1;
-    });
+    // New algorithm: EDF + iterative priority correction for late tasks
+    // 1. Start with EDF scheduling
+    // 2. Identify late tasks
+    // 3. Among late tasks, check for priority inversion
+    // 4. If inversion exists, place highest priority late tasks with shortest timespan first
+    // 5. Lock them in the schedule and repeat EDF on remaining tasks
+    // 6. Continue until no priority inversion among late tasks
+    
+    function scheduleWithEDF(remainingItems, lockedItems = []) {
+        const allocator = createAllocator(today, workDays, meetIv, SCHEDULE);
+        
+        // First, allocate time for locked items (they've been placed first)
+        const lockedWithTimes = [];
+        for (const lockedItem of lockedItems) {
+            const dlIdx = lockedItem.deadline.diff(today, "days").days;
+            const segs = lockedItem.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(lockedItem.duration);
+            const startCal = segs.length ? segs[0].calS : dlIdx;
+            const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
+            const late = endCal > dlIdx + 1;
+            
+            lockedWithTimes.push({
+                ...lockedItem,
+                dlIdx,
+                segs,
+                startCal,
+                endCal,
+                late
+            });
+        }
+        
+        // Sort remaining items by EDF (earliest deadline first)
+        const sorted = [...remainingItems].sort((a, b) => 
+            a.deadline - b.deadline || b.duration - a.duration
+        );
+        
+        const result = [];
+        
+        for (const item of sorted) {
+            const dlIdx = item.deadline.diff(today, "days").days;
+            const segs = item.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(item.duration);
+            const startCal = segs.length ? segs[0].calS : dlIdx;
+            const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
+            const late = endCal > dlIdx + 1;
+            
+            result.push({
+                ...item,
+                dlIdx,
+                segs,
+                startCal,
+                endCal,
+                late
+            });
+        }
+        
+        return [...lockedWithTimes, ...result];
+    }
+    
+    function hasPriorityInversionAmongLate(sched) {
+        const lateTasks = sched.filter(s => s.late);
+        if (lateTasks.length < 2) return false;
+        
+        // Sort late tasks by their start time in the schedule
+        const lateTasksByTime = [...lateTasks].sort((a, b) => a.startCal - b.startCal);
+        
+        // Check if any higher priority late task comes after a lower priority late task
+        // i.e., a task with lower priority number (higher priority) has a later startCal than a task with higher priority number (lower priority)
+        for (let i = 0; i < lateTasksByTime.length; i++) {
+            for (let j = i + 1; j < lateTasksByTime.length; j++) {
+                // If task j has higher priority (lower number) but comes later (higher startCal)
+                // This is a priority inversion
+                if (lateTasksByTime[j].priority < lateTasksByTime[i].priority && 
+                    lateTasksByTime[j].startCal > lateTasksByTime[i].startCal) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    
+    function findHighestPriorityShortestLate(sched) {
+        const lateTasks = sched.filter(s => s.late);
+        if (lateTasks.length === 0) return null;
+        
+        // Find the highest priority (lowest priority number) among late tasks
+        const minPriority = Math.min(...lateTasks.map(t => t.priority));
+        const highestPriorityLate = lateTasks.filter(t => t.priority === minPriority);
+        
+        // Among highest priority late tasks, find the one with shortest timespan (duration)
+        let shortest = highestPriorityLate[0];
+        for (const task of highestPriorityLate) {
+            if (task.duration < shortest.duration) {
+                shortest = task;
+            }
+        }
+        
+        return shortest;
+    }
+    
+    // Iterative scheduling with priority correction
+    // We need to track items by a unique identifier to properly remove them
+    // Use the key from the original items (path:line)
+    let remainingItems = [...items];
+    let lockedItems = [];
+    let finalSched = [];
+    
+    // Maximum iterations to prevent infinite loops
+    const maxIterations = items.length * 2;
+    let iteration = 0;
+    
+    while (iteration < maxIterations) {
+        iteration++;
+        
+        // Schedule with current locked items
+        finalSched = scheduleWithEDF(remainingItems, lockedItems);
+        
+        // Check if there's priority inversion among late tasks
+        if (!hasPriorityInversionAmongLate(finalSched)) {
+            break; // No more inversion, we're done
+        }
+        
+        // Find the highest priority late task with shortest timespan
+        const taskToLock = findHighestPriorityShortestLate(finalSched);
+        
+        if (!taskToLock) {
+            break; // No late tasks to lock
+        }
+        
+        // Lock this task (remove from remaining, add to locked)
+        // Use a unique key to identify the task
+        const taskKey = `${taskToLock.path}:${taskToLock.line}`;
+        remainingItems = remainingItems.filter(item => 
+            `${item.path}:${item.line}` !== taskKey
+        );
+        lockedItems.push(taskToLock);
+    }
+    
+    // Final schedule is the last computed one
+    const sched = finalSched;
 
     // Build lookup maps
     const idToAll = {}; sched.forEach(s => { if (s.id) idToAll[s.id] = s; }); meetData.forEach(l => { if (l.id) idToAll[l.id] = l; });
