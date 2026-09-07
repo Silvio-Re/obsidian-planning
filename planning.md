@@ -508,7 +508,7 @@ function renderGantt(container, scheduleData) {
             if (setRow) s.__row = ri;
             let fill, stroke, strokeWidth;
             if (s.late) {
-                if (s.priority === 4) { fill = "rgb(128,128,128)"; stroke = "rgb(64,64,64)"; strokeWidth = 2; }
+                if (s.priority === 3 || s.priority === 4) { fill = "rgb(128,128,128)"; stroke = "rgb(64,64,64)"; strokeWidth = 2; }
                 else if (s.priority === 2) { fill = "rgb(255,165,80)"; stroke = "rgb(200,120,40)"; strokeWidth = 2; }
                 else { fill = "rgb(224,108,117)"; stroke = "rgb(150,0,0)"; strokeWidth = 2; }
             } else { fill = "rgba(97,175,239,0.9)"; stroke = "rgba(255,255,255,0.6)"; strokeWidth = 1; }
@@ -521,7 +521,7 @@ function renderGantt(container, scheduleData) {
             if (r.type === "group") { const c = r.node, isColl = collapsed.has(c.id), tri = isColl ? "▸" : "▾", isLeaf = c.children.size === 0, icon = isLeaf ? "📄" : "📁", col = isLeaf ? "rgb(152,195,121)" : "rgb(97,175,239)", bg = isLeaf ? "rgba(152,195,121,0.10)" : "rgba(97,175,239,0.10)"; rows += `<rect x="0" y="${y}" width="${W}" height="${rh}" fill="${bg}"/> <text x="${ind}" y="${y + rh / 2 + 4}" font-size="12" fill="${col}" pointer-events="none">${tri} ${icon} ${esc(clip(c.label, Math.max(8, 34 - r.depth * 3)))} <tspan fill="gray">(${fmtHours(c.total)}h)</tspan></text>`; if (isColl) { collectEntries(c, []).forEach(en => { if (en.k === "task") rows += taskBars(en.s, y + 5, ri); else rows += meetBar(en.l, y + 5, ri); }); } rows += `<rect class="gfold" data-node="${escA(c.id)}" x="0" y="${y}" width="${gm.lab}" height="${rh}" fill="transparent" cursor="pointer"/>`; return; }
             rows += `<line x1="0" y1="${y + rh}" x2="${W}" y2="${y + rh}" stroke="rgba(128,128,128,0.12)"/>`;
             if (r.type === "meet") { const l = r.l; rows += `<text class="glabel" data-path="${escA(l.path)}" data-line="${l.line}" x="${ind + 6}" y="${y + rh / 2 + 4}" font-size="12" fill="rgb(198,120,221)" cursor="pointer">📌 ${esc(clip(l.title, Math.max(6, 26 - r.depth * 3)))} (${fmtHours(l.hours)}h)</text>` + meetBar(l, y + 4, ri); return; }
-            const s = r.s; const textColor = s.late ? (s.priority === 4 ? "rgb(128,128,128)" : (s.priority === 2 ? "rgb(255,165,80)" : "rgb(224,108,117)")) : "gray"; rows += `<text class="glabel" data-path="${escA(s.path)}" data-line="${s.line}" x="${ind + 6}" y="${y + rh / 2 + 4}" font-size="12" fill="${textColor}" cursor="pointer">${esc(clip(s.title, Math.max(6, 26 - r.depth * 3)))} (${fmtHours(s.duration)}h)</text>` + taskBars(s, y + 4, ri); const dx = xAt(s.dlIdx); rows += `<line x1="${dx}" y1="${y + 2}" x2="${dx}" y2="${y + rh - 2}" stroke="${s.late ? "rgb(224,108,117)" : "rgb(152,195,121)"}" stroke-width="2" stroke-dasharray="3 2" pointer-events="none"/>`;
+            const s = r.s; const textColor = s.late ? (s.priority === 3 || s.priority === 4 ? "rgb(128,128,128)" : (s.priority === 2 ? "rgb(255,165,80)" : "rgb(224,108,117)")) : "gray"; rows += `<text class="glabel" data-path="${escA(s.path)}" data-line="${s.line}" x="${ind + 6}" y="${y + rh / 2 + 4}" font-size="12" fill="${textColor}" cursor="pointer">${esc(clip(s.title, Math.max(6, 26 - r.depth * 3)))} (${fmtHours(s.duration)}h)</text>` + taskBars(s, y + 4, ri); const dx = xAt(s.dlIdx); rows += `<line x1="${dx}" y1="${y + 2}" x2="${dx}" y2="${y + rh - 2}" stroke="${s.late ? "rgb(224,108,117)" : "rgb(152,195,121)"}" stroke-width="2" stroke-dasharray="3 2" pointer-events="none"/>`;
         });
 
         let arrows = ""; sched.forEach(s => { if (s.__row == null) return; s.deps.forEach(dep => { const p = idToAll[dep]; if (!p || !p.__row || p.__row === s.__row) return; const ex = xAt(p.endCal), ey = midY(p.__row), sx = xAt(s.startCal), sy = midY(s.__row); arrows += `<path d="M ${ex} ${ey} C ${ex + 18} ${ey}, ${sx - 18} ${sy}, ${sx - 2} ${sy}" fill="none" stroke="rgb(230,160,60)" stroke-width="1.6"/><polygon points="${sx},${sy} ${sx - 8},${sy - 4} ${sx - 8},${sy + 4}" fill="rgb(230,160,60)"/>`; }); });
@@ -555,7 +555,7 @@ function renderExecutionList(container, seq, calToDT) {
         let col, lateStyle;
         if (e.kind === "meet") { col = "rgb(198,120,221)"; lateStyle = ""; }
         else if (e.late) {
-            if (e.priority === 4) { col = "rgb(128,128,128)"; lateStyle = "background:rgba(128,128,128,0.1);"; }
+            if (e.priority === 3 || e.priority === 4) { col = "rgb(128,128,128)"; lateStyle = "background:rgba(128,128,128,0.1);"; }
             else if (e.priority === 2) { col = "rgb(255,165,80)"; lateStyle = "background:rgba(255,165,80,0.1);"; }
             else { col = "rgb(224,108,117)"; lateStyle = "background:rgba(224,108,117,0.1);"; }
         } else { col = "rgb(97,175,239)"; lateStyle = ""; }
