@@ -251,8 +251,9 @@ function computeSchedule(items, locks, today, SCHEDULE) {
         return false;
     }
     
-    function findHighestPriorityShortestLate(sched) {
-        const lateTasks = sched.filter(s => s.late);
+    function findHighestPriorityShortestLate(sched, lockedKeys) {
+        // Only consider tasks that are NOT already locked
+        const lateTasks = sched.filter(s => s.late && !lockedKeys.has(`${s.path}:${s.line}`));
         if (lateTasks.length === 0) return null;
         
         // Find the highest priority (lowest priority number) among late tasks
@@ -275,6 +276,7 @@ function computeSchedule(items, locks, today, SCHEDULE) {
     // Use the key from the original items (path:line)
     let remainingItems = [...items];
     let lockedItems = [];
+    let lockedKeys = new Set();
     let finalSched = [];
     
     // Maximum iterations to prevent infinite loops
@@ -292,8 +294,8 @@ function computeSchedule(items, locks, today, SCHEDULE) {
             break; // No more inversion, we're done
         }
         
-        // Find the highest priority late task with shortest timespan
-        const taskToLock = findHighestPriorityShortestLate(finalSched);
+        // Find the highest priority late task with shortest timespan that is NOT already locked
+        const taskToLock = findHighestPriorityShortestLate(finalSched, lockedKeys);
         
         if (!taskToLock) {
             break; // No late tasks to lock
@@ -302,6 +304,7 @@ function computeSchedule(items, locks, today, SCHEDULE) {
         // Lock this task (remove from remaining, add to locked)
         // Use a unique key to identify the task
         const taskKey = `${taskToLock.path}:${taskToLock.line}`;
+        lockedKeys.add(taskKey);
         remainingItems = remainingItems.filter(item => 
             `${item.path}:${item.line}` !== taskKey
         );
