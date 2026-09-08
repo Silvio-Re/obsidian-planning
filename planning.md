@@ -5,7 +5,7 @@
 const pages = dv.pages('"Projets"');
 
 // --- Constants & Regex ---
-const durRe = /\(⏱:: *(\d+(?:\.\d+)?)h\)/;
+const durRe = /(\(\u23f1:: *(\d+(?:\.\d+)?)h\))|\u23f1 *(\d+(?:\.\d+)?)h/;
 const dateRe = /📅\s*\[*\s*(\d{4}-\d{2}-\d{2})(?:\s*\]*\s*(\d{1,2}):(\d{2}))?/;
 const idRe = /🆔\s*([\w-]+)/u;
 const blkRe = /⛔\s*([\w,\-\s]+)/u;
@@ -18,7 +18,7 @@ function parsePriority(text) {
     return pm ? PRIORITY_RANK[pm[1]] : PRIORITY_DEFAULT;
 }
 function fmtHours(h) { return h.toFixed(1).replace(/\.0$/, ""); }
-function ownDur(t) { const dm = t.text.match(durRe); return dm ? parseFloat(dm[1]) : 0; }
+function ownDur(t) { const dm = t.text.match(durRe); if (!dm) return 0; const num = dm[2] || dm[3]; return num ? parseFloat(num) : 0; }
 function cleanTitle(text) { return text.replace(/[📅🆔⛔🔺⏫🔼🔽⏬\uFE0F].*/u, "").replace(durRe, "").replace(/\s+/g, " ").trim(); }
 function baseName(p) { return p.split("/").pop().replace(/\.md$/, ""); }
 
