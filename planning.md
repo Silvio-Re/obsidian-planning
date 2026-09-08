@@ -204,7 +204,7 @@ function computeSchedule(items, locks, today, SCHEDULE) {
             const segs = lockedItem.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(lockedItem.duration);
             const startCal = segs.length ? segs[0].calS : dlIdx;
             const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
-            const late = endCal > dlIdx + 1;
+            const late = endCal > dlIdx;
             
             lockedWithTimes.push({
                 ...lockedItem,
@@ -228,7 +228,7 @@ function computeSchedule(items, locks, today, SCHEDULE) {
             const segs = item.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(item.duration);
             const startCal = segs.length ? segs[0].calS : dlIdx;
             const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
-            const late = endCal > dlIdx + 1;
+            const late = endCal > dlIdx;
             
             result.push({
                 ...item,
