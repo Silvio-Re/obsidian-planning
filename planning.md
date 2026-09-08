@@ -32,7 +32,7 @@ function collectAll(pages) {
         for (const t of page.file.tasks) markChildren(t);
         
         for (const t of page.file.tasks) {
-            if (t.completed) continue;
+            if (t.completed || t.status === "-") continue;
             const key = `${path}:${t.line}`;
             if (seen.has(key)) continue;
             seen.add(key);
@@ -91,7 +91,7 @@ function buildGraph(all) {
 
 function chargeableHours(node, path, markSet) {
     let sum = ownDur(node);
-    for (const c of node.subtasks ?? []) { if (c.completed) continue; if (markSet.has(`${path}:${c.line}`)) continue; sum += chargeableHours(c, path, markSet); }
+    for (const c of node.subtasks ?? []) { if (c.completed || c.status === "-") continue; if (markSet.has(`${path}:${c.line}`)) continue; sum += chargeableHours(c, path, markSet); }
     return sum === 0 ? 0.1 : sum;
 }
 
