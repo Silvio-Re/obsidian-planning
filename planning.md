@@ -91,7 +91,10 @@ function buildGraph(all) {
         while (stack.length) {
             const cur = stack.pop();
             best = Math.min(best, cur.priority);
-            if (cur.id && dependents[cur.id]) for (const d of dependents[cur.id]) if (!vis.has(d.key)) { vis.add(d.key); stack.push(d); }
+            for (const dep of cur.deps) {
+                const depTasks = all.filter(r => r.id === dep);
+                for (const dt of depTasks) if (!vis.has(dt.key)) { vis.add(dt.key); stack.push(dt); }
+            }
         }
         return best;
     }
