@@ -85,6 +85,17 @@ function buildGraph(all) {
         return best;
     }
     all.forEach(r => r.eff = r.locked ? null : effectiveDL(r));
+    function effectivePriority(item) {
+        let best = item.priority;
+        const vis = new Set([item.key]), stack = [item];
+        while (stack.length) {
+            const cur = stack.pop();
+            best = Math.min(best, cur.priority);
+            if (cur.id && dependents[cur.id]) for (const d of dependents[cur.id]) if (!vis.has(d.key)) { vis.add(d.key); stack.push(d); }
+        }
+        return best;
+    }
+    all.forEach(r => r.effPriority = effectivePriority(r));
     const markSet = new Set(all.filter(r => r.eff).map(r => r.key));
     return { dependents, markSet };
 }
@@ -107,7 +118,7 @@ function collectPlannerData(pages) {
         }
         if (!r.eff) continue;
         const hours = chargeableHours(r.node, r.path, markSet);
-        items.push({ duration: hours, deadline: r.eff, title: r.title, path: r.path, line: r.line, file: r.file, id: r.id, deps: r.deps, ownStr: r.ownDL ? r.ownDL.toFormat("yyyy-MM-dd") : "—", inherited: !r.ownDL || r.eff < r.ownDL, priority: r.priority });
+        items.push({ duration: hours, deadline: r.eff, title: r.title, path: r.path, line: r.line, file: r.file, id: r.id, deps: r.deps, ownStr: r.ownDL ? r.ownDL.toFormat("yyyy-MM-dd") : "—", inherited: !r.ownDL || r.eff < r.ownDL, priority: r.effPriority });
     }
     return { tasks: all, items, locks, dependents, markSet, warnings };
 }
