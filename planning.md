@@ -16,12 +16,12 @@ const CALENDAR_CHAR = '\u{1F4C5}';  // U+1F4C5: CALENDAR
 const ID_CHAR = '\u{1F194}';  // U+1F194: SQUARED CL
 const BLOCK_CHAR = '\u{26D4}';  // U+26D4: CROSSED SWORDS
 
-export const CLOCK = CLOCK_CHAR;
-export const CALENDAR = CALENDAR_CHAR;
-export const ID_MARKER = ID_CHAR;
-export const BLOCK_MARKER = BLOCK_CHAR;
+const CLOCK = CLOCK_CHAR;
+const CALENDAR = CALENDAR_CHAR;
+const ID_MARKER = ID_CHAR;
+const BLOCK_MARKER = BLOCK_CHAR;
 
-export const PRIORITY = {
+const PRIORITY = {
   P0: P0,
   P1: P1,
   P2: P2,
@@ -29,7 +29,7 @@ export const PRIORITY = {
   P4: P4,
 };
 
-export const PRIORITY_RANK = {
+const PRIORITY_RANK = {
   [P0]: 0,
   [P1]: 1,
   [P2]: 2,
@@ -37,55 +37,55 @@ export const PRIORITY_RANK = {
   [P4]: 4,
 };
 
-export const PRIORITY_DEFAULT = 2;
+const PRIORITY_DEFAULT = 2;
 
 // Regex patterns
 // In template literals used with new RegExp(), we need to double-escape backslashes
 // \s becomes \\s, \d becomes \\d, etc.
 
-export const priorityRe = new RegExp(
+const priorityRe = new RegExp(
   `(${P0}|${P1}|${P2}|${P3}|${P4})\\uFE0F?`,
   'u'
 );
 
-export const durRe = new RegExp(
+const durRe = new RegExp(
   `(${CLOCK_CHAR}:: *(\\d+(?:\\.\\d+)?)h)|${CLOCK_CHAR} *(\\d+(?:\\.\\d+)?)h`,
   'u'
 );
 
-export const dateRe = new RegExp(
+const dateRe = new RegExp(
   `${CALENDAR_CHAR}\\s*\\[*\\s*(\\d{4}-\\d{2}-\\d{2})(?:\\s*\\]*\\s*(\\d{1,2}):(\\d{2}))?`,
   'u'
 );
 
-export const idRe = new RegExp(
+const idRe = new RegExp(
   `${ID_CHAR}\\s*([\\w-]+)`,
   'u'
 );
 
-export const blkRe = new RegExp(
+const blkRe = new RegExp(
   `${BLOCK_CHAR}\\s*([\\w,\\-\\s]+)`,
   'u'
 );
 
 // Helper functions
-export function parsePriority(text) {
+function parsePriority(text) {
   const pm = text.match(priorityRe);
   return pm ? PRIORITY_RANK[pm[1]] : PRIORITY_DEFAULT;
 }
 
-export function fmtHours(h) {
+function fmtHours(h) {
   return h.toFixed(1).replace(/\.0$/, '');
 }
 
-export function ownDur(t) {
+function ownDur(t) {
   const dm = t.text.match(durRe);
   if (!dm) return 0;
   const num = dm[2] || dm[3];
   return num ? parseFloat(num) : 0;
 }
 
-export function cleanTitle(text) {
+function cleanTitle(text) {
   // Remove all metadata markers from the START of text to end of line
   // In Obsidian, metadata appears at the beginning: "📅 2024-01-01 ⏱:: 2h actual task"
   // This pattern removes from the first metadata char to the end
@@ -101,19 +101,19 @@ export function cleanTitle(text) {
     .trim();
 }
 
-export function baseName(p) {
+function baseName(p) {
   return p.split('/').pop().replace(/\.md$/, '');
 }
+
 
 
 // src/parser.js - Data collection and parsing for Obsidian tasks
 // This file uses dv and Obsidian-specific data structures
 // It's NOT testable outside Obsidian
 
-import { CALENDAR, ID_MARKER, BLOCK_MARKER, PRIORITY_DEFAULT, priorityRe, durRe, dateRe, idRe, blkRe, parsePriority, ownDur, cleanTitle, baseName } from './constants.js';
 
 // --- Data Collection ---
-export function collectAll(pages) {
+function collectAll(pages) {
   const all = [];
   const seen = new Set();
   const warnings = [];
@@ -203,7 +203,7 @@ export function collectAll(pages) {
 }
 
 // --- Graph Building ---
-export function buildGraph(all) {
+function buildGraph(all) {
   const dependents = {};
   all.forEach(r => r.deps.forEach(dep => {
     dependents[dep] = dependents[dep] || [];
@@ -260,7 +260,7 @@ export function buildGraph(all) {
 }
 
 // --- Chargeable Hours Calculation ---
-export function chargeableHours(node, path, markSet) {
+function chargeableHours(node, path, markSet) {
   let sum = ownDur(node);
   for (const c of node.subtasks ?? []) {
     if (c.completed || c.status === '-') continue;
@@ -271,7 +271,7 @@ export function chargeableHours(node, path, markSet) {
 }
 
 // --- Main Data Collection ---
-export function collectPlannerData(pages) {
+function collectPlannerData(pages) {
   const { all, warnings } = collectAll(pages);
   const { dependents, markSet } = buildGraph(all);
   const items = [];
@@ -319,6 +319,7 @@ export function collectPlannerData(pages) {
 }
 
 
+
 // src/scheduler.js - Scheduling logic (no Obsidian/Dataview dependencies)
 // All emoji are imported from constants.js - NEVER use literal emoji
 
@@ -326,7 +327,7 @@ export function collectPlannerData(pages) {
  * Create an allocator for scheduling tasks across work days
  * Pure function - takes configuration and returns allocation functions
  */
-export function createAllocator(today, workDays, meetIv, SCHEDULE) {
+function createAllocator(today, workDays, meetIv, SCHEDULE) {
   const freeCache = {};
 
   function dayFree(di) {
@@ -394,7 +395,7 @@ export function createAllocator(today, workDays, meetIv, SCHEDULE) {
  * Late tasks are those where endCal > dlIdx
  * Priority inversion: a higher priority task (lower number) comes after a lower priority task
  */
-export function hasPriorityInversionAmongLate(sched) {
+function hasPriorityInversionAmongLate(sched) {
   const lateTasks = sched.filter(s => s.late);
   if (lateTasks.length < 2) return false;
 
@@ -417,7 +418,7 @@ export function hasPriorityInversionAmongLate(sched) {
 /**
  * Find the highest priority late task with shortest duration that is NOT already locked
  */
-export function findHighestPriorityShortestLate(sched, lockedKeys) {
+function findHighestPriorityShortestLate(sched, lockedKeys) {
   const lateTasks = sched.filter(s => s.late && !lockedKeys.has(`${s.path}:${s.line}`));
   if (lateTasks.length === 0) return null;
 
@@ -440,7 +441,7 @@ export function findHighestPriorityShortestLate(sched, lockedKeys) {
  * Schedule with EDF (Earliest Deadline First)
  * Pure function - takes items, lockedItems, allocator config
  */
-export function scheduleWithEDF(remainingItems, lockedItems, allocator) {
+function scheduleWithEDF(remainingItems, lockedItems, allocator) {
   const lockedWithTimes = [];
 
   // First, allocate time for locked items (they've been placed first)
@@ -493,7 +494,7 @@ export function scheduleWithEDF(remainingItems, lockedItems, allocator) {
  * Pure function - takes items, locks, today, SCHEDULE config
  * Returns schedule data with today, SCHEDULE, calToDT, idToAll, workDays
  */
-export function computeSchedule(items, locks, today, SCHEDULE) {
+function computeSchedule(items, locks, today, SCHEDULE) {
   // Setup work days and meetings
   let sStart = today;
   while (sStart.weekday > 5) sStart = sStart.plus({ days: 1 });
@@ -585,6 +586,7 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
 }
 
 
+
 // src/capacity.js - Capacity calculation logic
 // All emoji are imported from constants.js - NEVER use literal emoji
 
@@ -593,7 +595,7 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
  * Pure function - takes items, locks, today, SCHEDULE config
  * Returns capacity data object
  */
-export function computeCapacity(items, locks, today, SCHEDULE) {
+function computeCapacity(items, locks, today, SCHEDULE) {
   // Find date range
   const lastDeadline = items.reduce((mx, it) => (it.deadline > mx ? it.deadline : mx), today);
   const firstDeadline = items.reduce((mn, it) => (it.deadline < mn ? it.deadline : mn), lastDeadline);
@@ -681,6 +683,7 @@ export function computeCapacity(items, locks, today, SCHEDULE) {
 }
 
 
+
 // src/render/capacity_chart.js - Capacity chart rendering (Obsidian/Dataview dependent)
 // This file uses dv and app - not testable outside Obsidian
 
@@ -688,7 +691,7 @@ export function computeCapacity(items, locks, today, SCHEDULE) {
  * Render Capacity chart
  * Depends on: dv, app, and capacity data
  */
-export function renderCapacity(container, capacityData, SCHEDULE) {
+function renderCapacity(container, capacityData, SCHEDULE) {
   const { values, labels, dateArr, byDay, maxStack, totalDays, t0 } = capacityData;
   const pinned = new Set();
   const panel = container.createEl('div');
@@ -913,16 +916,16 @@ export function renderCapacity(container, capacityData, SCHEDULE) {
 }
 
 
+
 // src/render/gantt.js - Gantt chart rendering (Obsidian/Dataview dependent)
 // This file uses dv and app - not testable outside Obsidian
 
-import { CALENDAR, ID_MARKER } from '../constants.js';
 
 /**
  * Render Gantt chart
  * Depends on: dv, app, and schedule data
  */
-export function renderGantt(container, scheduleData) {
+function renderGantt(container, scheduleData) {
   const { sched, meetData, today, SCHEDULE, calToDT, idToAll } = scheduleData;
   const gm = { top: 42, lab: 270, r: 20 };
   const maxCal = Math.max(...sched.map(s => Math.max(s.endCal, s.dlIdx + 1)), ...meetData.map(l => l.calE), 1);
@@ -1230,6 +1233,7 @@ export function renderGantt(container, scheduleData) {
 }
 
 
+
 // src/render/execution_list.js - Execution list rendering (Obsidian/Dataview dependent)
 // This file uses dv and app - not testable outside Obsidian
 
@@ -1237,7 +1241,7 @@ export function renderGantt(container, scheduleData) {
  * Render execution list
  * Depends on: dv, app, and schedule data
  */
-export function renderExecutionList(container, seq, calToDT) {
+function renderExecutionList(container, seq, calToDT) {
   const planDiv = container.createEl('div');
   planDiv.style.cssText = 'font-size:13px;border:1px solid rgba(128,128,128,0.25);border-radius:6px;overflow:hidden;';
   let prevDate = null;
@@ -1312,13 +1316,14 @@ function makeTaskOpener(app) {
 const openTask = makeTaskOpener(dv.app);
 
 
+
 // src/render/ignored.js - Ignored tasks rendering (Obsidian/Dataview dependent)
 // This file uses dv and app - not testable outside Obsidian
 
 /**
  * Get reason why a task was ignored
  */
-export function getIgnoreReason(d) {
+function getIgnoreReason(d) {
   if (!d.ownDL && !d.graphDL) return 'no deadline or inherited deadline';
   if (!d.ownDL) return 'no own deadline and inherited deadline is invalid';
   if (d.eff === null) return 'locked task';
@@ -1329,7 +1334,7 @@ export function getIgnoreReason(d) {
  * Render ignored tasks
  * Depends on: dv, app, and ignored tasks list
  */
-export function renderIgnored(container, ignored) {
+function renderIgnored(container, ignored) {
   const dropDiv = container.createEl('div');
   dropDiv.style.cssText = 'font-size:13px;border:1px solid rgba(128,128,128,0.25);border-radius:6px;overflow:hidden;';
   dropDiv.innerHTML = ignored.slice(0, 10).map((d, idx) => `
@@ -1396,6 +1401,7 @@ function makeTaskOpener(app) {
 const openTask = makeTaskOpener(dv.app);
 
 
+
 // src/render/parsing_errors.js - Parsing errors rendering (Obsidian/Dataview dependent)
 // This file uses dv and app - not testable outside Obsidian
 
@@ -1403,7 +1409,7 @@ const openTask = makeTaskOpener(dv.app);
  * Render parsing errors
  * Depends on: dv, app, and warnings list
  */
-export function renderParsingErrors(container, warnings) {
+function renderParsingErrors(container, warnings) {
   const errDiv = container.createEl('div');
   errDiv.style.cssText = 'font-size:13px;border:1px solid rgba(128,128,0.25);border-radius:6px;overflow:hidden;';
 
@@ -1475,20 +1481,20 @@ function makeTaskOpener(app) {
 const openTask = makeTaskOpener(dv.app);
 
 
+
 // src/index.js - Main orchestrator for Obsidian DataviewJS
 // This is the entry point that gets wrapped in ```dataviewjs ```
 // It uses dv, dv.app, and other Obsidian APIs
 
 // Import all modules
-import { CLOCK, CALENDAR, ID_MARKER, BLOCK_MARKER, PRIORITY, PRIORITY_RANK, PRIORITY_DEFAULT, priorityRe, durRe, dateRe, idRe, blkRe, parsePriority, fmtHours, ownDur, cleanTitle, baseName } from './constants.js';
-import { collectPlannerData } from './parser.js';
-import { computeSchedule } from './scheduler.js';
-import { computeCapacity } from './capacity.js';
-import { renderCapacity } from './render/capacity_chart.js';
-import { renderGantt } from './render/gantt.js';
-import { renderExecutionList } from './render/execution_list.js';
-import { renderIgnored, getIgnoreReason } from './render/ignored.js';
-import { renderParsingErrors } from './render/parsing_errors.js';
+
+
+
+
+
+
+
+
 
 // =============================================
 // MAIN EXECUTION
