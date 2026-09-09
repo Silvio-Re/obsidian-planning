@@ -1,0 +1,211 @@
+// src/parser.js - Data collection and parsing for Obsidian tasks
+// This file uses dv and Obsidian-specific data structures
+// It's NOT testable outside Obsidian
+
+import { CALENDAR, ID_MARKER, BLOCK_MARKER, PRIORITY_DEFAULT, priorityRe, durRe, dateRe, idRe, blkRe, parsePriority, ownDur, cleanTitle, baseName } from './constants.js';
+
+// --- Data Collection ---
+export function collectAll(pages) {
+  const all = [];
+  const seen = new Set();
+  const warnings = [];
+
+  for (const page of pages) {
+    const path = page.file.path;
+    const file = baseName(path);
+    const childKeys = new Set();
+
+    const markChildren = (t) => {
+      for (const c of t.subtasks ?? []) {
+        childKeys.add(`${path}:${c.line}`);
+        markChildren(c);
+      }
+    };
+
+    for (const t of page.file.tasks) markChildren(t);
+
+    for (const t of page.file.tasks) {
+      if (t.completed || t.status === '-') continue;
+      const key = `${path}:${t.line}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const km = t.text.match(dateRe);
+      const idm = t.text.match(idRe);
+      const blm = t.text.match(blkRe);
+      const priority = parsePriority(t.text);
+      let ownDL = null;
+      let locked = false;
+      let mDate = null;
+      let mHour = 0;
+      let mMin = 0;
+      const parsingErrors = [];
+
+      try {
+        if (km) {
+          if (km[2] != null) {
+            locked = true;
+            mDate = dv.date(km[1]);
+            mHour = +km[2];
+            mMin = +km[3];
+            if (isNaN(mHour) || mHour < 0 || mHour > 23) parsingErrors.push(`Hour invalid: ${km[2]}`);
+            if (isNaN(mMin) || mMin < 0 || mMin > 59) parsingErrors.push(`Minute invalid: ${km[3]}`);
+            if (!mDate) parsingErrors.push(`Date parse failed: ${km[1]}`);
+          } else {
+            ownDL = dv.date(km[1]);
+            if (!ownDL) parsingErrors.push(`Date parse failed: ${km[1]}`);
+          }
+        }
+      } catch (e) {
+        parsingErrors.push(`Exception: ${e.message}`);
+      }
+
+      const dur = ownDur(t);
+      if (dur < 0) parsingErrors.push(`Negative duration: ${dur}h`);
+      const isIndented = childKeys.has(key);
+
+      const taskEntry = {
+        key,
+        node: t,
+        path,
+        file,
+        line: t.line,
+        ownDL,
+        locked,
+        mDate,
+        mHour,
+        mMin,
+        graphDL: km ? dv.date(km[1]) : null,
+        id: idm ? idm[1].replace(/[^a-zA-Z0-9_-]+$/, '') : null,
+        deps: blm ? blm[1].split(',').map(s => s.trim().replace(/[^a-zA-Z0-9_-]+$/, '')).filter(Boolean) : [],
+        title: cleanTitle(t.text),
+        priority,
+        isIndented,
+        _parsingErrors: parsingErrors,
+      };
+
+      if (parsingErrors.length) {
+        warnings.push({ text: t.text, path, line: t.line, errors: parsingErrors });
+      }
+      all.push(taskEntry);
+    }
+  }
+
+  return { all, seen, warnings };
+}
+
+// --- Graph Building ---
+export function buildGraph(all) {
+  const dependents = {};
+  all.forEach(r => r.deps.forEach(dep => {
+    dependents[dep] = dependents[dep] || [];
+    dependents[dep].push(r);
+  }));
+
+  const minDate = (a, b) => (!a ? b : !b ? a : a < b ? a : b);
+
+  function effectiveDL(item) {
+    let best = item.ownDL;
+    const vis = new Set([item.key]);
+    const stack = [item];
+    while (stack.length) {
+      const cur = stack.pop();
+      best = minDate(best, cur.graphDL);
+      if (cur.id && dependents[cur.id]) {
+        for (const d of dependents[cur.id]) {
+          if (!vis.has(d.key)) {
+            vis.add(d.key);
+            stack.push(d);
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  all.forEach(r => r.eff = r.locked ? null : effectiveDL(r));
+
+  function effectivePriority(item) {
+    let best = item.priority;
+    const vis = new Set([item.key]);
+    const stack = [item];
+    while (stack.length) {
+      const cur = stack.pop();
+      best = Math.min(best, cur.priority);
+      for (const dep of cur.deps) {
+        const depTasks = all.filter(r => r.id === dep);
+        for (const dt of depTasks) {
+          if (!vis.has(dt.key)) {
+            vis.add(dt.key);
+            stack.push(dt);
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  all.forEach(r => r.effPriority = effectivePriority(r));
+  const markSet = new Set(all.filter(r => r.eff).map(r => r.key));
+
+  return { dependents, markSet };
+}
+
+// --- Chargeable Hours Calculation ---
+export function chargeableHours(node, path, markSet) {
+  let sum = ownDur(node);
+  for (const c of node.subtasks ?? []) {
+    if (c.completed || c.status === '-') continue;
+    if (markSet.has(`${path}:${c.line}`)) continue;
+    sum += chargeableHours(c, path, markSet);
+  }
+  return sum === 0 ? 0.1 : sum;
+}
+
+// --- Main Data Collection ---
+export function collectPlannerData(pages) {
+  const { all, warnings } = collectAll(pages);
+  const { dependents, markSet } = buildGraph(all);
+  const items = [];
+  const locks = [];
+
+  for (const r of all) {
+    if (r.locked) {
+      const h = chargeableHours(r.node, r.path, markSet);
+      if (h > 0) {
+        locks.push({
+          day: r.mDate,
+          hour: r.mHour,
+          min: r.mMin,
+          hours: h,
+          title: r.title,
+          path: r.path,
+          line: r.line,
+          file: r.file,
+          id: r.id,
+          deps: r.deps
+        });
+      }
+      continue;
+    }
+
+    if (!r.eff) continue;
+
+    const hours = chargeableHours(r.node, r.path, markSet);
+    items.push({
+      duration: hours,
+      deadline: r.eff,
+      title: r.title,
+      path: r.path,
+      line: r.line,
+      file: r.file,
+      id: r.id,
+      deps: r.deps,
+      ownStr: r.ownDL ? r.ownDL.toFormat('yyyy-MM-dd') : '--',
+      inherited: !r.ownDL || r.eff < r.ownDL,
+      priority: r.effPriority
+    });
+  }
+
+  return { tasks: all, items, locks, dependents, markSet, warnings };
+}

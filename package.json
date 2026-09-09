@@ -1,0 +1,23 @@
+{
+  "name": "obsidian-planning",
+  "version": "1.0.0",
+  "description": "Obsidian DataviewJS planning plugin - testable and maintainable",
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/test-runner.js",
+    "build": "node scripts/build.js",
+    "dev": "npm test && npm run build",
+    "check": "node scripts/build.js"
+  },
+  "keywords": [
+    "obsidian",
+    "dataview",
+    "planning",
+    "task-management"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
