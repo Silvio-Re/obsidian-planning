@@ -14,7 +14,7 @@ All emoji MUST be represented using the format: `\u{XXXXXX}` where XXXXXX is the
 | Priority 4 (Lowest) | U+23EC | `\u{23EC}` | Lowest priority |
 | Clock | U+23F1 | `\u{23F1}` | Duration marker |
 | Calendar | U+1F4C5 | `\u{1F4C5}` | Date marker |
-| ID | U+1F3F4 | `\u{1F3F4}` | Task ID marker |
+| ID | U+1F194 | `\u{1F194}` | Task ID marker |
 | Block | U+26D4 | `\u{26D4}` | Block/dependency marker |
 
 > WARNING: AI must NEVER use literal emoji characters or \uXXXX (4-digit) surrogate pairs.
