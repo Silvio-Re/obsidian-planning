@@ -22,6 +22,9 @@ const pages = dv.pages('"Projets"');
 // Collect all planner data
 const { tasks: all, items, locks, dependents, markSet, warnings: parsingWarnings } = collectPlannerData(pages);
 
+const today = dv.date('today');
+const SCHEDULE_CONFIG = { startHour: 9, hoursPerDay: 8 };
+
 if (!items.length) {
   dv.paragraph('No tasks with a duration and an (own or inherited) deadline found.');
 } else {
@@ -34,9 +37,6 @@ if (!items.length) {
     dupWarn.style.cssText = 'margin-top:12px;font-weight:700;font-size:13px;color:rgb(224,108,117);';
     dupWarn.innerHTML = `\u26a0 Duplicate task id${dupIds.length > 1 ? 's' : ''}: ${dupIds.map(id => `${id} (${idCounts.get(id)}\u00d7)`).join(', ')}`;
   }
-
-  const today = dv.date('today');
-  const SCHEDULE_CONFIG = { startHour: 9, hoursPerDay: 8 };
 
   // ===== LOGIC PHASE =====
   const scheduleData = computeSchedule(items, locks, today, SCHEDULE_CONFIG);

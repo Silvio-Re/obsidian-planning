@@ -885,7 +885,7 @@ function renderCapacity(container, capacityData, SCHEDULE) {
         const extra = dm.inherited ? ` - own:${dm.ownStr}` : '';
         lbls += `<text class="lbl" data-path="${escA(dm.path)}" data-line="${dm.line}" x="${x + 9}" y="${m.t + 28 + k * 17}" font-size="12" fill="rgb(97,175,239)" stroke="${halo}" stroke-width="3" paint-order="stroke" cursor="pointer" visibility="${vis}">${esc(dm.date)} - ${esc(dm.title)} (${fmtHours(dm.hours)}h) - ${esc(dm.file)}${esc(extra)}</text>`;
       });
-      marks += `<g class="mk" data-day="${dayIdx}"><line class="mkline" x1="${x}" y1="${m.t}" x2="${x}" y2="${m.t + ih}" stroke="${lineCol}" pointer-events="none"/>${segs}<rect class="toggle" x="${x - 9}" y="${m.t - 2}" width="18" height="18" fill="transparent" cursor="pointer"/><text x="${x}" y="${m.t + 12}" font-size="13" text-anchor="middle" pointer-events="none">calendar</text>${lbls}</g>`;
+      marks += `<g class="mk" data-day="${dayIdx}"><line class="mkline" x1="${x}" y1="${m.t}" x2="${x}" y2="${m.t + ih}" stroke="${lineCol}" pointer-events="none"/>${segs}<rect class="toggle" x="${x - 9}" y="${m.t - 2}" width="18" height="18" fill="transparent" cursor="pointer"/><text x="${x}" y="${m.t + 12}" font-size="13" text-anchor="middle" pointer-events="none">${CALENDAR}</text>${lbls}</g>`;
     });
 
     const todayLine = `<line x1="${xAt(t0)}" y1="${m.t}" x2="${xAt(t0)}" y2="${m.t + ih}" stroke="rgb(152,195,121)" stroke-width="2" pointer-events="none"/><text x="${xAt(t0) + 3}" y="${m.t + ih - 4}" font-size="12" fill="rgb(152,195,121)" pointer-events="none">today</text>`;
@@ -1384,6 +1384,9 @@ const pages = dv.pages('"Projets"');
 // Collect all planner data
 const { tasks: all, items, locks, dependents, markSet, warnings: parsingWarnings } = collectPlannerData(pages);
 
+const today = dv.date('today');
+const SCHEDULE_CONFIG = { startHour: 9, hoursPerDay: 8 };
+
 if (!items.length) {
   dv.paragraph('No tasks with a duration and an (own or inherited) deadline found.');
 } else {
@@ -1396,9 +1399,6 @@ if (!items.length) {
     dupWarn.style.cssText = 'margin-top:12px;font-weight:700;font-size:13px;color:rgb(224,108,117);';
     dupWarn.innerHTML = `\u26a0 Duplicate task id${dupIds.length > 1 ? 's' : ''}: ${dupIds.map(id => `${id} (${idCounts.get(id)}\u00d7)`).join(', ')}`;
   }
-
-  const today = dv.date('today');
-  const SCHEDULE_CONFIG = { startHour: 9, hoursPerDay: 8 };
 
   // ===== LOGIC PHASE =====
   const scheduleData = computeSchedule(items, locks, today, SCHEDULE_CONFIG);
