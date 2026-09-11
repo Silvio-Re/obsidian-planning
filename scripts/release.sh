@@ -50,9 +50,14 @@ if [ "$UNSTAGED" -gt 0 ]; then
   echo "   Working tree still dirty after build — commit source changes first."
   exit 1
 fi
-git commit -m "chore: regenerate planning.md for $TAG" > /dev/null 2>&1
-git push origin main > /dev/null 2>&1
-echo "   ✓ planning.md committed and pushed"
+# Only commit if planning.md actually changed (build may be idempotent)
+if git diff --cached --quiet; then
+  echo "   ✓ planning.md up to date (no changes to commit)"
+else
+  git commit -m "chore: regenerate planning.md for $TAG" > /dev/null 2>&1
+  git push origin main > /dev/null 2>&1
+  echo "   ✓ planning.md committed and pushed"
+fi
 
 # --- Step 4: Create GitHub release ---
 echo ""
