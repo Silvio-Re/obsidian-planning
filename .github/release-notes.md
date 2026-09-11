@@ -1,4 +1,7 @@
-## What's New in v0.2
+v0.2 — Modular architecture with test suite and build system
+
+What's New in v0.2
+==================
 
 Major refactor from a single monolithic `planning.md` into modular, testable ES modules with a full 18-file test suite.
 

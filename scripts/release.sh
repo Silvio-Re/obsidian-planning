@@ -45,13 +45,8 @@ echo "   ✓ planning.md built"
 echo ""
 echo "3/4  Committing regenerated planning.md..."
 git add planning.md
-UNSTAGED=$(git status --porcelain | wc -l)
-if [ "$UNSTAGED" -gt 0 ]; then
-  echo "   Working tree still dirty after build — commit source changes first."
-  exit 1
-fi
 # Only commit if planning.md actually changed (build may be idempotent)
-if git diff --cached --quiet; then
+if git diff --cached --quiet planning.md; then
   echo "   ✓ planning.md up to date (no changes to commit)"
 else
   git commit -m "chore: regenerate planning.md for $TAG" > /dev/null 2>&1
