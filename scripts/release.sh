@@ -2,16 +2,17 @@
 # scripts/release.sh — Create a proper GitHub release with planning.md asset
 # Usage:
 #   bash scripts/release.sh <version>
-#   bash scripts/release.sh 0.3
+#   bash scripts/release.sh 0.2       (two-part: X.Y)
+#   bash scripts/release.sh 0.2.0     (three-part: X.Y.Z)
 #
 # This script:
-#   1. Verifies all tests pass
-#   2. Builds planning.md
-#   3. Creates a GitHub release with planning.md as asset
-#   4. Tags the release and pushes
+#   1. Runs all tests
+#   2. Builds planning.md from modular sources
+#   3. Commits and pushes the regenerated planning.md
+#   4. Creates a GitHub release with planning.md as asset
 #
 # Naming conventions (enforced):
-#   - Tag:          vX.Y.Z  (e.g. v0.3)
+#   - Tag:          vX.Y or vX.Y.Z
 #   - Release name: vX.Y.Z — <short-title>
 #   - Commit msg:   vX.Y.Z: <description>
 #   - Release notes: .github/release-notes.md (use the template)
@@ -22,14 +23,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 # --- Arguments ---
-VERSION="${1:?Usage: bash scripts/release.sh <version>  (e.g. 0.3)}"
+VERSION="${1:?Usage: bash scripts/release.sh <version>  (e.g. 0.2 or 0.2.0)}"
 TAG="v${VERSION}"
-
-# --- Validate version format ---
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "ERROR: Version must be X.Y.Z format (got: $VERSION)"
-  exit 1
-fi
 
 # --- Step 1: Run tests ---
 echo "════════════════════════════════════════"
@@ -46,22 +41,18 @@ echo "2/4  Building planning.md..."
 npm run build
 echo "   ✓ planning.md built"
 
-# --- Step 3: Check git state ---
+# --- Step 3: Commit regenerated planning.md ---
 echo ""
-echo "3/4  Checking git state..."
+echo "3/4  Committing regenerated planning.md..."
+git add planning.md
 UNSTAGED=$(git status --porcelain | wc -l)
 if [ "$UNSTAGED" -gt 0 ]; then
-  echo "ERROR: Working tree is dirty. Commit staged changes first."
-  echo "   Run: git add -A && git commit -m \"${TAG}: <description>\""
+  echo "   Working tree still dirty after build — commit source changes first."
   exit 1
 fi
-
-# Check current branch
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [ "$CURRENT_BRANCH" != "main" ]; then
-  echo "ERROR: Must be on 'main' branch (currently on '$CURRENT_BRANCH')"
-  exit 1
-fi
+git commit -m "chore: regenerate planning.md for $TAG" > /dev/null 2>&1
+git push origin main > /dev/null 2>&1
+echo "   ✓ planning.md committed and pushed"
 
 # --- Step 4: Create GitHub release ---
 echo ""
@@ -90,10 +81,8 @@ echo ""
 echo "════════════════════════════════════════"
 echo "  ✓ Release created!"
 echo "  $TAG"
-echo "  $(gh release view "$TAG" --json url -q '.url' 2>/dev/null || echo 'https://github.com/Silvio-Re/obsidian-planning/releases/tag/'$TAG)"
+RELEASE_URL=$(gh release view "$TAG" --json url -q '.url' 2>/dev/null || echo "https://github.com/Silvio-Re/obsidian-planning/releases/tag/$TAG")
+echo "  $RELEASE_URL"
 echo "════════════════════════════════════════"
 echo ""
-echo "Next steps:"
-echo "  git add .github/release-notes.md  # if you updated notes"
-echo "  git commit -m \"$TAG: release notes\""
-echo "  git push origin main"
+echo "Done. The release script handles everything."
