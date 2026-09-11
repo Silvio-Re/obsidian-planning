@@ -1,4 +1,4 @@
-v0.2 — Modular architecture with test suite and build system
+Modular architecture with test suite and build system
 
 What's New in v0.2
 ==================
