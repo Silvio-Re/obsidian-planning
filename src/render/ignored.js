@@ -9,7 +9,7 @@ import { esc, escA, renderMd, makeTaskOpener, openTask } from '../utils.js';
 export function getIgnoreReason(d) {
   if (!d.ownDL && !d.graphDL) return 'no deadline or inherited deadline';
   if (!d.ownDL) return 'no own deadline and inherited deadline is invalid';
-  if (d.eff === null) return 'locked task';
+  if (d.locked) return 'locked task';
   return 'no effective deadline';
 }
 

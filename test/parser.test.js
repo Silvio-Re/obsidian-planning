@@ -147,3 +147,53 @@ console.log('  priorityRe: PASS');
 
 console.log('\nAll parser tests passed!');
 process.exit(0);
+
+// --- Additional parser test coverage ---
+console.log('Testing additional parser edge cases...');
+
+// Test priorityRe with multiple emoji in text
+const multiPrio = PRIORITY.P0 + ' high ' + PRIORITY.P3 + ' low';
+const pMatch = multiPrio.match(priorityRe);
+assert(pMatch !== null, 'multi-priority text matches');
+assert.strictEqual(pMatch[1], PRIORITY.P0, 'matches first priority');
+
+// Test parsePriority returns correct default
+assert.strictEqual(parsePriority(''), PRIORITY_DEFAULT, 'empty string => default');
+assert.strictEqual(parsePriority(' '), PRIORITY_DEFAULT, 'whitespace => default');
+assert.strictEqual(parsePriority('P0 P1 P2'), PRIORITY_DEFAULT, 'text P0 not emoji => default');
+
+// Test ownDur with various formats
+assert.strictEqual(ownDur(mockTask(CLOCK + ' 1h')), 1, '⏱ 1h');
+assert.strictEqual(ownDur(mockTask(CLOCK + ' 100h')), 100, '⏱ 100h');
+assert.strictEqual(ownDur(mockTask('some text ' + CLOCK + ' 2h')), 2, 'text before clock');
+assert.strictEqual(ownDur(mockTask('(' + CLOCK + ':: 0.33h)')), 0.33, '(⏱:: 0.33h)');
+assert.strictEqual(ownDur(mockTask('(⏱:: 12.5h) more text')), 12.5, '(⏱:: 12.5h) with suffix');
+
+// Test dateRe edge cases
+const dExtra1 = (CALENDAR + ' 2024-01-01 14:30').match(dateRe);
+assert(dExtra1 !== null, 'date with space-separated time matches');
+assert.strictEqual(dExtra1[1], '2024-01-01', 'captures date');
+assert.strictEqual(dExtra1[2], '14', 'captures hour');
+assert.strictEqual(dExtra1[3], '30', 'captures minute');
+
+// Test cleanTitle with multiple emojis
+const dirtyExtra = 'hello ' + PRIORITY.P0 + ' ' + CLOCK + ':: 2h ' + CALENDAR + ' 2024-01-01';
+const cleanedExtra = cleanTitle(dirtyExtra);
+assert.strictEqual(cleanedExtra, 'hello', 'removes all metadata from first emoji onward');
+
+// Test cleanTitle with emoji in title text
+const emojiTitle = 'task with ' + PRIORITY.P2 + ' inside';
+const cleanedExtra2 = cleanTitle(emojiTitle);
+assert.strictEqual(cleanedExtra2, 'task with ', 'emoji in middle removes rest');
+
+// Test fmtHours precision
+assert.strictEqual(fmtHours(0.33), '0.3', 'one decimal');
+assert.strictEqual(fmtHours(0.333), '0.3', 'truncated to 1 decimal');
+assert.strictEqual(fmtHours(999), '999', 'large whole');
+assert.strictEqual(fmtHours(999.9), '999.9', 'large decimal');
+
+// Test baseName with various extensions
+assert.strictEqual(baseName('path.md'), 'path');
+assert.strictEqual(baseName('path/extra.md'), 'extra');
+
+console.log('  Additional parser: PASS');

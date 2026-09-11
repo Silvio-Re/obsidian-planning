@@ -13,6 +13,22 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 const TEST_FILES = [
   'test/parser.test.js',
   'test/duration_parser.test.js',
+  'test/scheduler.test.js',
+  'test/scheduler_advanced.test.js',
+  'test/graph.test.js',
+  'test/graph_realistic.test.js',
+  'test/dependency_order.test.js',
+  'test/chargeable_hours.test.js',
+  'test/chargeable_hours_extended.test.js',
+  'test/utils.test.js',
+  'test/constants_extended.test.js',
+  'test/capacity.test.js',
+  'test/capacity_deadlines_realistic.test.js',
+  'test/ignored.test.js',
+  'test/build.test.js',
+  'test/rendering.test.js',
+  'test/parsing_errors.test.js',
+  'test/real_data_edge_cases.test.js',
 ];
 
 console.log('Running tests...\n');

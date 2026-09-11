@@ -515,10 +515,14 @@ function findHighestPriorityShortestLate(sched, lockedKeys) {
 }
 
 /**
- * Schedule with EDF (Earliest Deadline First)
+ * Schedule with EDF (Earliest Deadline First) respecting dependency order.
+ * Uses topological sort with deadline constraint: among tasks whose
+ * dependencies are all already placed, pick the earliest-deadline one
+ * (tie-break: longer duration first).
+ *
  * Pure function - takes items, lockedItems, allocator config
  */
-function scheduleWithEDF(remainingItems, lockedItems, allocator) {
+function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
   const lockedWithTimes = [];
 
   // First, allocate time for locked items (they've been placed first)
@@ -539,28 +543,54 @@ function scheduleWithEDF(remainingItems, lockedItems, allocator) {
     });
   }
 
-  // Sort remaining items by EDF (earliest deadline first)
-  const sorted = [...remainingItems].sort((a, b) =>
-    a.deadline - b.deadline || b.duration - a.duration
-  );
-
+  // Schedule remaining items respecting dependencies (topological EDF)
+  const scheduled = new Set(lockedItems.map(it => `${it.path}:${it.line}`));
+  const unscheduled = new Map();
+  remainingItems.forEach(item => unscheduled.set(`${item.path}:${item.line}`, item));
   const result = [];
+  let cycleGuard = scheduled.size + unscheduled.size + 1;
 
-  for (const item of sorted) {
-    const dlIdx = item.deadline.diff(today, 'days').days;
-    const segs = item.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(item.duration);
+  while (unscheduled.size > 0 && cycleGuard > 0) {
+    cycleGuard--;
+
+    // Find ready tasks: all deps already scheduled (or have no deps)
+    const ready = [];
+    for (const [key, item] of unscheduled) {
+      if (item.deps.length === 0 || item.deps.every(dep => scheduled.has(dep))) {
+        ready.push(item);
+      }
+    }
+
+    // If no ready tasks but unscheduled remain, we have a cycle.
+    // Fall back to remaining items sorted by deadline (handles orphan deps).
+    if (ready.length === 0) {
+      for (const item of remainingItems) {
+        if (!scheduled.has(`${item.path}:${item.line}`)) {
+          const dlIdx = item.deadline.diff(today, 'days').days;
+          const segs = item.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(item.duration);
+          const startCal = segs.length ? segs[0].calS : dlIdx;
+          const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
+          const late = endCal > dlIdx;
+          scheduled.add(`${item.path}:${item.line}`);
+          result.push({ ...item, dlIdx, segs, startCal, endCal, late });
+        }
+      }
+      break;
+    }
+
+    // Among ready tasks, pick earliest deadline; tie-break: longer duration
+    ready.sort((a, b) => a.deadline - b.deadline || b.duration - a.duration);
+    const chosen = ready[0];
+    unscheduled.delete(`${chosen.path}:${chosen.line}`);
+    scheduled.add(`${chosen.path}:${chosen.line}`);
+
+    const dlIdx = chosen.deadline.diff(today, 'days').days;
+    const segs = chosen.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(chosen.duration);
     const startCal = segs.length ? segs[0].calS : dlIdx;
     const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
     const late = endCal > dlIdx;
 
-    result.push({
-      ...item,
-      dlIdx,
-      segs,
-      startCal,
-      endCal,
-      late
-    });
+    result.push({ ...chosen, dlIdx, segs, startCal, endCal, late });
   }
 
   return [...lockedWithTimes, ...result];
@@ -618,7 +648,7 @@ function computeSchedule(items, locks, today, SCHEDULE) {
     iteration++;
 
     const allocator = createAllocator(today, workDays, meetIv, SCHEDULE);
-    finalSched = scheduleWithEDF(remainingItems, lockedItems, allocator);
+    finalSched = scheduleWithEDF(remainingItems, lockedItems, allocator, today);
 
     // Check if there's priority inversion among late tasks
     if (!hasPriorityInversionAmongLate(finalSched)) {
@@ -1286,7 +1316,7 @@ function renderExecutionList(container, seq, calToDT) {
 function getIgnoreReason(d) {
   if (!d.ownDL && !d.graphDL) return 'no deadline or inherited deadline';
   if (!d.ownDL) return 'no own deadline and inherited deadline is invalid';
-  if (d.eff === null) return 'locked task';
+  if (d.locked) return 'locked task';
   return 'no effective deadline';
 }
 
