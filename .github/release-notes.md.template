@@ -1,0 +1,53 @@
+## What's New in vX.Y.Z
+
+<Describe what changed since the last release. Be specific about features, fixes, and refactors.>
+
+### 🏗 Architecture
+<If modules were restructured, new bundler, test additions, etc.>
+
+### 📅 Scheduling
+<If scheduling algorithm changed, new features, bug fixes.>
+
+### 📊 Dashboards
+<If rendering changed, new features, bug fixes.>
+
+### 🛠 Developer Tools
+<If build system, scripts, or tooling changed.>
+
+### Changes since vX.Y.Z
+<Bullet list of changed files with brief descriptions.>
+
+---
+
+## Release Checklist
+
+**Naming conventions (MUST follow):**
+- Git tag: `vX.Y.Z` (e.g. `v0.3`)
+- Release name: `vX.Y.Z — <short descriptive title>`
+- Commit message: `vX.Y.Z: <description>`
+- Release notes file: `.github/release-notes.md` (edit this template before each release)
+
+**Before releasing:**
+1. [ ] All tests pass (`npm test`)
+2. [ ] Build succeeds (`npm run build`)
+3. [ ] `planning.md` is regenerated from latest source
+4. [ ] `.github/release-notes.md` is updated with accurate notes
+5. [ ] Working tree is clean (all changes committed)
+6. [ ] On `main` branch, up to date with remote
+
+**How to release (future agents):**
+```bash
+# Option A: Use the release script
+bash scripts/release.sh 0.3
+
+# Option B: Manual steps
+npm test && npm run build
+gh release create v0.3 \
+  --title "v0.3 — <title>" \
+  --notes-file .github/release-notes.md \
+  planning.md
+```
+
+**After releasing:**
+- Commit any updated release notes
+- Push to main
