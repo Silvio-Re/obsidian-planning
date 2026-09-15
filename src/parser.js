@@ -183,7 +183,8 @@ export function collectPlannerData(pages) {
           line: r.line,
           file: r.file,
           id: r.id,
-          deps: r.deps
+          deps: r.deps,
+          priority: r.effPriority
         });
       }
       continue;

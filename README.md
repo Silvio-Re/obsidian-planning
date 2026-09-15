@@ -119,9 +119,12 @@ src/
     ignored.js          — Undeclared tasks
     parsing_errors.js   — Malformed metadata
   index.js              — Main orchestrator
-test/                   — 17 test files covering parsing, scheduling, capacity
+test/                   — 20 test files covering parsing, scheduling, capacity, and end-to-end render
+  harness/
+    sandbox.mjs         — DOM mock + bundle runner shared by the render tests
 scripts/
   build.js              — Bundles src/**/*.js into planning.md
+  validate.mjs          — node --check on every src file + the bundled planning.md body
   test-runner.js        — Runs all tests
 ```
 
@@ -142,23 +145,50 @@ The build process:
 
 ### Testing
 
-17 test files cover:
+20 test files cover:
 - Parser (metadata extraction, date parsing, duration)
-- Scheduler (EDF, priority inversion correction, locked tasks)
+- Scheduler (EDF, priority inversion correction, locked tasks, late-meeting detection)
 - Dependency graph (inheritance, transitive deadlines)
 - Capacity calculation (meetings, cumulative deficit)
 - Build pipeline (idempotency, output integrity)
 - Edge cases (real-world data, malformed input)
+- End-to-end render (bundled `planning.md` executed against fake pages; Gantt SVG + execution HTML)
+
+`npm test` runs a `pretest` hook first: it rebuilds `planning.md`, then runs
+`scripts/validate.mjs` (`node --check` on every source file and the bundled body). You therefore
+always test a fresh, syntax-valid bundle — never a stale one.
 
 ```bash
 npm test
-# → 17 passed, 0 failed
+# → 20 passed, 0 failed
 ```
+
+**Render previews.** The end-to-end render test (`test/render_bundle.test.js`) writes the generated
+artifacts of each fixture to `test/output/` for inspection:
+
+- `test/output/*.svg` — the raw Gantt SVG and execution-list HTML (string/diff inspection).
+- `test/output/png/*.png` — faithful rasterizations of each Gantt SVG, rendered with `resvg-js`
+  (full `<tspan>`/CSS support, so the bold **LATE** label and row colors render correctly).
+
+These are regenerated on every `npm test`. Open the PNGs to visually verify the Gantt.
 
 ### Adding a Feature
 
 1. Write or extend a test in `test/`.
 2. Add logic to the appropriate `src/` module.
-3. Run `npm test` — all 17 tests must pass.
+3. Run `npm test` — all tests must pass (this also rebuilds and syntax-validates via `pretest`).
 4. Run `npm run build` — `planning.md` is regenerated.
 5. Place `planning.md` contents into an Obsidian note and verify in Obsidian.
+
+### Gotchas
+
+- **SVG vs. HTML namespaces.** The Gantt is built as one SVG string. Never inject HTML markup into
+  an SVG `<text>` element — `<b>LATE</b>` inside `<text>` makes the browser's SVG parser swallow every
+  row after it and render them as plain text (no colored bars). Use the SVG-correct `<tspan>` for inline
+  styling; keep `<b>` only in the execution-list panel, which is HTML `<div>` content.
+- **Render modules can only be tested via the bundle.** `render/*.js` import non-exported helpers from
+  `utils.js` (`esc`, `clip`, `renderMd`, `openTask`), which only exist after `build.js` inlines them.
+  Use `test/harness/sandbox.mjs` to run the bundled `planning.md` against fake pages and assert on the
+  generated SVG/HTML — importing the modules directly will fail.
+- **The dashboard renders nothing with zero regular tasks.** `index.js` only renders when `items.length`
+  is non-zero, so render-test fixtures must contain at least one regular (non-meeting) task.

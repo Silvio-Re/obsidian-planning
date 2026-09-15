@@ -63,7 +63,10 @@ if (!items.length) {
   renderGantt(wrap, scheduleData);
 
   // Execution List
-  const seq = [...sched.map(s => ({ kind: 'task', startCal: s.startCal, endCal: s.endCal, title: s.title, hours: s.duration, path: s.path, line: s.line, file: s.file, late: s.late, dl: s.deadline.toFormat('dd LLL yyyy'), priority: s.priority })), ...locks.map(l => ({ kind: 'meet', startCal: l.calS, endCal: l.calE, title: l.title, hours: l.hours, path: l.path, line: l.line, file: l.file, late: false, dl: l.day.toFormat('dd LLL yyyy') }))].sort((a, b) => a.startCal - b.startCal);
+  const seq = [
+    ...sched.map(s => ({ kind: 'task', startCal: s.startCal, endCal: s.endCal, title: s.title, hours: s.duration, path: s.path, line: s.line, file: s.file, late: s.late, dl: s.deadline.toFormat('dd LLL yyyy'), priority: s.priority })),
+    ...locks.map(l => ({ kind: 'meet', startCal: l.calS, endCal: l.calE, title: l.title, hours: l.hours, path: l.path, line: l.line, file: l.file, late: l.displayLate, priority: l.priority, dl: l.day.toFormat('dd LLL yyyy') })),
+  ].sort((a, b) => a.startCal - b.startCal);
   dv.container.createEl('div', { text: 'Planning \u2014 execution order' }).style.cssText = 'margin-top:16px;font-weight:700;font-size:13px;';
   renderExecutionList(wrap, seq, scheduleData.calToDT);
 

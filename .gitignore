@@ -1,1 +1,4 @@
 node_modules/
+
+# Generated SVG/HTML/PNG render previews (regenerated on npm test)
+test/output/

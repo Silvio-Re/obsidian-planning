@@ -281,6 +281,19 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
   sched.forEach(s => { if (s.id) idToAll[s.id] = s; });
   meetData.forEach(l => { if (l.id) idToAll[l.id] = l; });
 
+  // A meeting (lock) is a fixed block and cannot itself be late. But tasks that
+  // must be performed BEFORE the meeting are its prerequisites (lk.deps). If any
+  // prerequisite task is late, the meeting is flagged as displayLate so the UI
+  // can highlight it exactly like a late task (its prep work didn't finish on time).
+  locks.forEach(lk => {
+    let late = false;
+    for (const dep of lk.deps || []) {
+      const depTask = idToAll[dep];
+      if (depTask && depTask.late) { late = true; break; }
+    }
+    lk.displayLate = late;
+  });
+
   // Calendar utilities
   function calToDT(cal) {
     const dayOff = Math.floor(cal + 1e-9);

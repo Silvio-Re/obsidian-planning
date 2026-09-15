@@ -20,7 +20,12 @@ export function renderExecutionList(container, seq, calToDT) {
     if (showDate) prevDate = dateStr;
 
     let col, lateStyle;
-    if (e.kind === 'meet') { col = 'rgb(198,120,221)'; lateStyle = ''; }
+    if (e.kind === 'meet') {
+      if (e.late) {
+        col = e.priority === 3 || e.priority === 4 ? 'rgb(128,128,128)' : (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)');
+        lateStyle = 'background:rgba(224,108,117,0.1);';
+      } else { col = 'rgb(198,120,221)'; lateStyle = ''; }
+    }
     else if (e.late) {
       if (e.priority === 3 || e.priority === 4) { col = 'rgb(128,128,128)'; lateStyle = 'background:rgba(128,128,128,0.1);'; }
       else if (e.priority === 2) { col = 'rgb(255,165,80)'; lateStyle = 'background:rgba(255,165,80,0.1);'; }

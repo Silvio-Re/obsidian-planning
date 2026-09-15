@@ -29,6 +29,8 @@ const TEST_FILES = [
   'test/rendering.test.js',
   'test/parsing_errors.test.js',
   'test/real_data_edge_cases.test.js',
+  'test/late_meeting_deps.test.js',
+  'test/render_bundle.test.js',
 ];
 
 console.log('Running tests...\n');

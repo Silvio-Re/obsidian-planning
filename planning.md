@@ -369,7 +369,8 @@ function collectPlannerData(pages) {
           line: r.line,
           file: r.file,
           id: r.id,
-          deps: r.deps
+          deps: r.deps,
+          priority: r.effPriority
         });
       }
       continue;
@@ -680,6 +681,19 @@ function computeSchedule(items, locks, today, SCHEDULE) {
   const idToAll = {};
   sched.forEach(s => { if (s.id) idToAll[s.id] = s; });
   meetData.forEach(l => { if (l.id) idToAll[l.id] = l; });
+
+  // A meeting (lock) is a fixed block and cannot itself be late. But tasks that
+  // must be performed BEFORE the meeting are its prerequisites (lk.deps). If any
+  // prerequisite task is late, the meeting is flagged as displayLate so the UI
+  // can highlight it exactly like a late task (its prep work didn't finish on time).
+  locks.forEach(lk => {
+    let late = false;
+    for (const dep of lk.deps || []) {
+      const depTask = idToAll[dep];
+      if (depTask && depTask.late) { late = true; break; }
+    }
+    lk.displayLate = late;
+  });
 
   // Calendar utilities
   function calToDT(cal) {
@@ -1127,7 +1141,12 @@ function renderGantt(container, scheduleData) {
       if (setRow) l.__row = ri;
       const x1 = xAt(l.calS);
       const w = Math.max(4, xAt(l.calE) - x1);
-      return `<rect class="gbar" data-path="${escA(l.path)}" data-line="${l.line}" x="${x1}" y="${y}" width="${w}" height="${rh - 8}" rx="3" fill="rgba(198,120,221,0.9)" stroke="rgba(255,255,255,0.6)" cursor="pointer"><title>${esc(l.title)} \u00b7 ${l.day.toFormat('yyyy-MM-dd')} ${String(l.hour).padStart(2, '0')}:${String(l.min).padStart(2, '0')} \u00b7 ${fmtHours(l.hours)}h (locked)</title></rect>`;
+      const late = l.displayLate;
+      const fill = late ? 'rgb(224,108,117)' : 'rgba(198,120,221,0.9)';
+      const stroke = late ? 'rgb(150,0,0)' : 'rgba(255,255,255,0.6)';
+      const sw = late ? 2 : 1;
+      const tag = late ? '(late \u2014 prerequisite late)' : '(locked)';
+      return `<rect class="gbar" data-path="${escA(l.path)}" data-line="${l.line}" x="${x1}" y="${y}" width="${w}" height="${rh - 8}" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" cursor="pointer"><title>${esc(l.title)} \u00b7 ${l.day.toFormat('yyyy-MM-dd')} ${String(l.hour).padStart(2, '0')}:${String(l.min).padStart(2, '0')} \u00b7 ${fmtHours(l.hours)}h ${tag}</title></rect>`;
     };
 
     const taskBars = (s, y, ri, setRow = true) => {
@@ -1178,7 +1197,10 @@ function renderGantt(container, scheduleData) {
       rows += `<line x1="0" y1="${y + rh}" x2="${W}" y2="${y + rh}" stroke="rgba(128,128,128,0.12)"/>`;
       if (r.type === 'meet') {
         const l = r.l;
-        rows += `<text class="glabel" data-path="${escA(l.path)}" data-line="${l.line}" x="${ind + 6}" y="${y + rh / 2 + 4}" font-size="12" fill="rgb(198,120,221)" cursor="pointer">\u{1F4CC} ${esc(clip(l.title, Math.max(6, 26 - r.depth * 3)))} (${fmtHours(l.hours)}h)</text>` + meetBar(l, y + 4, ri);
+        const late = l.displayLate;
+        const textColor = late ? 'rgb(224,108,117)' : 'rgb(198,120,221)';
+        const lateTag = late ? ' \u00b7 <tspan font-weight="bold">LATE</tspan>' : '';
+        rows += `<text class="glabel" data-path="${escA(l.path)}" data-line="${l.line}" x="${ind + 6}" y="${y + rh / 2 + 4}" font-size="12" fill="${textColor}" cursor="pointer">\u{1F4CC} ${esc(clip(l.title, Math.max(6, 26 - r.depth * 3)))} (${fmtHours(l.hours)}h)${lateTag}</text>` + meetBar(l, y + 4, ri);
         return;
       }
       const s = r.s;
@@ -1287,7 +1309,12 @@ function renderExecutionList(container, seq, calToDT) {
     if (showDate) prevDate = dateStr;
 
     let col, lateStyle;
-    if (e.kind === 'meet') { col = 'rgb(198,120,221)'; lateStyle = ''; }
+    if (e.kind === 'meet') {
+      if (e.late) {
+        col = e.priority === 3 || e.priority === 4 ? 'rgb(128,128,128)' : (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)');
+        lateStyle = 'background:rgba(224,108,117,0.1);';
+      } else { col = 'rgb(198,120,221)'; lateStyle = ''; }
+    }
     else if (e.late) {
       if (e.priority === 3 || e.priority === 4) { col = 'rgb(128,128,128)'; lateStyle = 'background:rgba(128,128,128,0.1);'; }
       else if (e.priority === 2) { col = 'rgb(255,165,80)'; lateStyle = 'background:rgba(255,165,80,0.1);'; }
@@ -1458,7 +1485,10 @@ if (!items.length) {
   renderGantt(wrap, scheduleData);
 
   // Execution List
-  const seq = [...sched.map(s => ({ kind: 'task', startCal: s.startCal, endCal: s.endCal, title: s.title, hours: s.duration, path: s.path, line: s.line, file: s.file, late: s.late, dl: s.deadline.toFormat('dd LLL yyyy'), priority: s.priority })), ...locks.map(l => ({ kind: 'meet', startCal: l.calS, endCal: l.calE, title: l.title, hours: l.hours, path: l.path, line: l.line, file: l.file, late: false, dl: l.day.toFormat('dd LLL yyyy') }))].sort((a, b) => a.startCal - b.startCal);
+  const seq = [
+    ...sched.map(s => ({ kind: 'task', startCal: s.startCal, endCal: s.endCal, title: s.title, hours: s.duration, path: s.path, line: s.line, file: s.file, late: s.late, dl: s.deadline.toFormat('dd LLL yyyy'), priority: s.priority })),
+    ...locks.map(l => ({ kind: 'meet', startCal: l.calS, endCal: l.calE, title: l.title, hours: l.hours, path: l.path, line: l.line, file: l.file, late: l.displayLate, priority: l.priority, dl: l.day.toFormat('dd LLL yyyy') })),
+  ].sort((a, b) => a.startCal - b.startCal);
   dv.container.createEl('div', { text: 'Planning \u2014 execution order' }).style.cssText = 'margin-top:16px;font-weight:700;font-size:13px;';
   renderExecutionList(wrap, seq, scheduleData.calToDT);
 

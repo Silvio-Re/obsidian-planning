@@ -138,7 +138,12 @@ export function renderGantt(container, scheduleData) {
       if (setRow) l.__row = ri;
       const x1 = xAt(l.calS);
       const w = Math.max(4, xAt(l.calE) - x1);
-      return `<rect class="gbar" data-path="${escA(l.path)}" data-line="${l.line}" x="${x1}" y="${y}" width="${w}" height="${rh - 8}" rx="3" fill="rgba(198,120,221,0.9)" stroke="rgba(255,255,255,0.6)" cursor="pointer"><title>${esc(l.title)} \u00b7 ${l.day.toFormat('yyyy-MM-dd')} ${String(l.hour).padStart(2, '0')}:${String(l.min).padStart(2, '0')} \u00b7 ${fmtHours(l.hours)}h (locked)</title></rect>`;
+      const late = l.displayLate;
+      const fill = late ? 'rgb(224,108,117)' : 'rgba(198,120,221,0.9)';
+      const stroke = late ? 'rgb(150,0,0)' : 'rgba(255,255,255,0.6)';
+      const sw = late ? 2 : 1;
+      const tag = late ? '(late \u2014 prerequisite late)' : '(locked)';
+      return `<rect class="gbar" data-path="${escA(l.path)}" data-line="${l.line}" x="${x1}" y="${y}" width="${w}" height="${rh - 8}" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" cursor="pointer"><title>${esc(l.title)} \u00b7 ${l.day.toFormat('yyyy-MM-dd')} ${String(l.hour).padStart(2, '0')}:${String(l.min).padStart(2, '0')} \u00b7 ${fmtHours(l.hours)}h ${tag}</title></rect>`;
     };
 
     const taskBars = (s, y, ri, setRow = true) => {
@@ -189,7 +194,10 @@ export function renderGantt(container, scheduleData) {
       rows += `<line x1="0" y1="${y + rh}" x2="${W}" y2="${y + rh}" stroke="rgba(128,128,128,0.12)"/>`;
       if (r.type === 'meet') {
         const l = r.l;
-        rows += `<text class="glabel" data-path="${escA(l.path)}" data-line="${l.line}" x="${ind + 6}" y="${y + rh / 2 + 4}" font-size="12" fill="rgb(198,120,221)" cursor="pointer">\u{1F4CC} ${esc(clip(l.title, Math.max(6, 26 - r.depth * 3)))} (${fmtHours(l.hours)}h)</text>` + meetBar(l, y + 4, ri);
+        const late = l.displayLate;
+        const textColor = late ? 'rgb(224,108,117)' : 'rgb(198,120,221)';
+        const lateTag = late ? ' \u00b7 <tspan font-weight="bold">LATE</tspan>' : '';
+        rows += `<text class="glabel" data-path="${escA(l.path)}" data-line="${l.line}" x="${ind + 6}" y="${y + rh / 2 + 4}" font-size="12" fill="${textColor}" cursor="pointer">\u{1F4CC} ${esc(clip(l.title, Math.max(6, 26 - r.depth * 3)))} (${fmtHours(l.hours)}h)${lateTag}</text>` + meetBar(l, y + 4, ri);
         return;
       }
       const s = r.s;
