@@ -94,9 +94,11 @@ export function hasPriorityInversionAmongLate(sched) {
 }
 
 /**
- * Find the highest priority late task with shortest duration that is NOT already locked
+ * Find the highest priority late task with the earliest deadline that is NOT already locked.
+ * Among equal-priority late tasks the earliest deadline wins (a (priority, deadline) order,
+ * consistent with the EDF heuristic), not the shortest duration.
  */
-export function findHighestPriorityShortestLate(sched, lockedKeys) {
+export function findHighestPriorityEarliestDeadlineLate(sched, lockedKeys) {
   const lateTasks = sched.filter(s => s.late && !lockedKeys.has(`${s.path}:${s.line}`));
   if (lateTasks.length === 0) return null;
 
@@ -104,15 +106,15 @@ export function findHighestPriorityShortestLate(sched, lockedKeys) {
   const minPriority = Math.min(...lateTasks.map(t => t.priority));
   const highestPriorityLate = lateTasks.filter(t => t.priority === minPriority);
 
-  // Among highest priority late tasks, find the one with shortest duration
-  let shortest = highestPriorityLate[0];
+  // Among highest priority late tasks, pick the one with the earliest deadline
+  let earliest = highestPriorityLate[0];
   for (const task of highestPriorityLate) {
-    if (task.duration < shortest.duration) {
-      shortest = task;
+    if (task.deadline < earliest.deadline) {
+      earliest = task;
     }
   }
 
-  return shortest;
+  return earliest;
 }
 
 /**
@@ -256,8 +258,8 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
       break;
     }
 
-    // Find the highest priority late task with shortest duration that is NOT already locked
-    const taskToLock = findHighestPriorityShortestLate(finalSched, lockedKeys);
+    // Find the highest priority late task with the earliest deadline that is NOT already locked
+    const taskToLock = findHighestPriorityEarliestDeadlineLate(finalSched, lockedKeys);
 
     if (!taskToLock) {
       break;
