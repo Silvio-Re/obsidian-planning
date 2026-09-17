@@ -757,13 +757,19 @@ function computeSchedule(items, locks, today, SCHEDULE) {
   locks.forEach(lk => {
     const i = wdIndex[lk.day.toFormat('yyyy-MM-dd')];
     const sc = lk.hour + lk.min / 60;
-    let s = (sc - SCHEDULE.startHour) / SCHEDULE.hoursPerDay;
-    let e = s + lk.hours / SCHEDULE.hoursPerDay;
-    s = Math.max(0, Math.min(1, s));
-    e = Math.max(s, Math.min(1, e));
-    lk.calS = lk.day.diff(today, 'days').days + s;
-    lk.calE = lk.day.diff(today, 'days').days + e;
-    if (i != null) (meetIv[i] = meetIv[i] || []).push({ s, e });
+    // (Unclamped) intra-day start/end fraction. A meeting past working hours keeps its
+    // true position so the Gantt bar extends past the day's end into the next working
+    // day (the user knows the meeting time and it must be enforced).
+    const s = (sc - SCHEDULE.startHour) / SCHEDULE.hoursPerDay;
+    const e = s + lk.hours / SCHEDULE.hoursPerDay;
+    // Working-time lock: clamp to the day's [0,1] so only in-hours time is reserved;
+    // a meeting that starts past the working day reserves no extra working time.
+    const lockS = Math.max(0, Math.min(1, s));
+    const lockE = Math.max(lockS, Math.min(1, e));
+    const dayIdx = lk.day.diff(today, 'days').days;
+    lk.calS = dayIdx + s;
+    lk.calE = dayIdx + e;
+    if (i != null) (meetIv[i] = meetIv[i] || []).push({ s: lockS, e: lockE });
     meetData.push({ ...lk });
   });
 
@@ -1432,7 +1438,9 @@ function renderExecutionList(container, seq, calToDT) {
   const lines = [];
 
   seq.forEach((e, i) => {
-    const dateStr = calToDT(e.startCal).toFormat('ccc dd LLL');
+    // Meetings keep their requested calendar date (a post-working-hours meeting must
+    // show on that day, not roll to the next). Other rows fall back to startCal.
+    const dateStr = e.meetDateStr || calToDT(e.startCal).toFormat('ccc dd LLL');
     const showDate = dateStr !== prevDate;
     if (showDate) prevDate = dateStr;
 
@@ -1781,11 +1789,65 @@ function renderCompleted(container, completed, today) {
 
 
 
+// src/execution_sequence.js - Build the execution-order sequence (tasks + meetings).
+// Pure, testable. `sched` entries come from computeSchedule; `locks` are meetings.
+// `today` is the schedule's reference DateTime (luxon).
+
+// Task row for the execution list.
+function taskRow(s) {
+  return {
+    kind: 'task',
+    startCal: s.startCal,
+    endCal: s.endCal,
+    title: s.title,
+    hours: s.duration,
+    path: s.path,
+    line: s.line,
+    file: s.file,
+    late: s.late,
+    dl: s.deadline.toFormat('dd LLL yyyy'),
+    priority: s.priority
+  };
+}
+
+// Meeting row. A meeting past working hours must stay on its requested calendar date
+// (it must NOT roll to the next day): clamp its display start into its own working day
+// so it groups under `meetDateStr`, and carry the requested date for the date header.
+function meetRow(l, today) {
+  const dayIdx = l.day.diff(today, 'days').days;
+  const dispStart = Math.max(dayIdx, Math.min(l.calS, dayIdx + 1 - 1e-9));
+  return {
+    kind: 'meet',
+    startCal: dispStart,
+    endCal: l.calE,
+    title: l.title,
+    hours: l.hours,
+    path: l.path,
+    line: l.line,
+    file: l.file,
+    late: l.displayLate,
+    priority: l.priority,
+    dl: l.day.toFormat('dd LLL yyyy'),
+    meetDateStr: l.day.toFormat('ccc dd LLL')
+  };
+}
+
+// Tasks and meetings interleaved in chronological (cal) order.
+function buildExecutionSequence(sched, locks, today) {
+  return [
+    ...sched.map(taskRow),
+    ...locks.map(l => meetRow(l, today))
+  ].sort((a, b) => a.startCal - b.startCal);
+}
+
+
+
 // src/index.js - Main orchestrator for Obsidian DataviewJS
 // This is the entry point that gets wrapped in ```dataviewjs ```
 // It uses dv, dv.app, and other Obsidian APIs
 
 // Import all modules
+
 
 
 
@@ -1846,10 +1908,7 @@ if (!items.length) {
   renderGantt(wrap, scheduleData);
 
   // Execution List
-  const seq = [
-    ...sched.map(s => ({ kind: 'task', startCal: s.startCal, endCal: s.endCal, title: s.title, hours: s.duration, path: s.path, line: s.line, file: s.file, late: s.late, dl: s.deadline.toFormat('dd LLL yyyy'), priority: s.priority })),
-    ...locks.map(l => ({ kind: 'meet', startCal: l.calS, endCal: l.calE, title: l.title, hours: l.hours, path: l.path, line: l.line, file: l.file, late: l.displayLate, priority: l.priority, dl: l.day.toFormat('dd LLL yyyy') })),
-  ].sort((a, b) => a.startCal - b.startCal);
+  const seq = buildExecutionSequence(sched, locks, today);
   dv.container.createEl('div', { text: 'Planning \u2014 execution order' }).style.cssText = 'margin-top:16px;font-weight:700;font-size:13px;';
   renderExecutionList(wrap, seq, scheduleData.calToDT);
 

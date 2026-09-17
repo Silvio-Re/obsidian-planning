@@ -15,7 +15,9 @@ export function renderExecutionList(container, seq, calToDT) {
   const lines = [];
 
   seq.forEach((e, i) => {
-    const dateStr = calToDT(e.startCal).toFormat('ccc dd LLL');
+    // Meetings keep their requested calendar date (a post-working-hours meeting must
+    // show on that day, not roll to the next). Other rows fall back to startCal.
+    const dateStr = e.meetDateStr || calToDT(e.startCal).toFormat('ccc dd LLL');
     const showDate = dateStr !== prevDate;
     if (showDate) prevDate = dateStr;
 

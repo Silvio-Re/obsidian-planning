@@ -228,13 +228,19 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
   locks.forEach(lk => {
     const i = wdIndex[lk.day.toFormat('yyyy-MM-dd')];
     const sc = lk.hour + lk.min / 60;
-    let s = (sc - SCHEDULE.startHour) / SCHEDULE.hoursPerDay;
-    let e = s + lk.hours / SCHEDULE.hoursPerDay;
-    s = Math.max(0, Math.min(1, s));
-    e = Math.max(s, Math.min(1, e));
-    lk.calS = lk.day.diff(today, 'days').days + s;
-    lk.calE = lk.day.diff(today, 'days').days + e;
-    if (i != null) (meetIv[i] = meetIv[i] || []).push({ s, e });
+    // (Unclamped) intra-day start/end fraction. A meeting past working hours keeps its
+    // true position so the Gantt bar extends past the day's end into the next working
+    // day (the user knows the meeting time and it must be enforced).
+    const s = (sc - SCHEDULE.startHour) / SCHEDULE.hoursPerDay;
+    const e = s + lk.hours / SCHEDULE.hoursPerDay;
+    // Working-time lock: clamp to the day's [0,1] so only in-hours time is reserved;
+    // a meeting that starts past the working day reserves no extra working time.
+    const lockS = Math.max(0, Math.min(1, s));
+    const lockE = Math.max(lockS, Math.min(1, e));
+    const dayIdx = lk.day.diff(today, 'days').days;
+    lk.calS = dayIdx + s;
+    lk.calE = dayIdx + e;
+    if (i != null) (meetIv[i] = meetIv[i] || []).push({ s: lockS, e: lockE });
     meetData.push({ ...lk });
   });
 
