@@ -12,6 +12,8 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 // Test files to run
 const TEST_FILES = [
   'test/parser.test.js',
+  'test/completed.test.js',
+  'test/completed_filter.test.js',
   'test/duration_parser.test.js',
   'test/scheduler.test.js',
   'test/scheduler_advanced.test.js',

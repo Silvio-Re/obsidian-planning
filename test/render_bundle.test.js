@@ -19,7 +19,7 @@ import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { runBundle, findGanttSVG, findExecHTML } from './harness/sandbox.mjs';
+import { runBundle, findGanttSVG, findExecHTML, findCompleted } from './harness/sandbox.mjs';
 
 console.log('Testing end-to-end render (bundled planning.md)…\n');
 
@@ -157,6 +157,95 @@ async function main() {
     const svg = findGanttSVG(root);
     // Task bars still use the original blue fill and the standard rect class.
     assert.ok(svg.includes('class="gbar"'), 'gbar rects present');
+    console.log('    PASS');
+  }
+
+  // --- 6. Completed tasks rendered as a foldable tree (Gantt first-column layout) ---
+  console.log('Test 6: Completed tasks rendered as foldable project tree');
+  {
+    const completedPages = [
+      // Formation (parent) > Recrutement (leaf) : 1h ; and Onboarding (leaf) : 2.5h
+      { file: { path: 'Projets/Formation/Recrutement.md', tasks: [
+        { line: 2, completed: true, status: 'x', text: 'Tests unitaires 📅 2026-09-15 ⏱ 1h ⏫ ✅ 2026-09-15' },
+      ] } },
+      { file: { path: 'Projets/Formation/Onboarding.md', tasks: [
+        { line: 3, completed: true, status: 'x', text: 'Accueil stagiaire 📅 2026-09-14 ⏱2.5h ⏫ ✅ 2026-09-14' },
+      ] } },
+      // Budget (leaf) : 1h. No deadline field, only a completion date.
+      { file: { path: 'Projets/Budget.md', tasks: [
+        { line: 4, completed: true, status: 'x', text: 'Devis client ⏱1h ✅ 2026-09-13' },
+        // Completed but WITHOUT a completion date -> must be filtered out.
+        { line: 5, completed: true, status: 'x', text: 'Tache sans date de completion ⏱1h' },
+        // Completed in AUGUST (today is 2026-09-15 => current month = September).
+        // It must be filtered out by default; if it leaked through, Budget would be (2h).
+        { line: 6, completed: true, status: 'x', text: "Tache d'aout 2026 ⏱1h ✅ 2026-08-10" },
+      ] } },
+    ];
+    const root = runBundle(completedPages, { today });
+    const html = findCompleted(root);
+    assert.ok(html, 'completed tree rendered');
+    // Tasks lacking a ✅ completion date are not shown.
+    assert.ok(!html.includes('Tache sans date de completion'), 'task without completion date filtered out');
+    // Toolbar shows From / To calendar + text inputs defaulting to the month boundaries,
+    // and NO leftover "fold" help text.
+    assert.ok(html.includes('cdate-start-date'), 'From calendar date input present');
+    assert.ok(html.includes('cdate-start-text'), 'From text date input present');
+    assert.ok(html.includes('cdate-end-date'), 'To calendar date input present');
+    assert.ok(html.includes('cdate-end-text'), 'To text date input present');
+    assert.ok(html.includes('value="2026-09-01"'), 'From defaults to month start');
+    assert.ok(html.includes('value="2026-09-30"'), 'To defaults to month end');
+    assert.ok(!html.includes('fold)'), 'no leftover fold help text');
+    // Default range = current month (September 2026). An August completion is hidden.
+    assert.ok(!html.includes("Tache d'aout"), 'task from a different month filtered out by default');
+    assert.ok(!html.includes('(2h)'), 'August task excluded keeps Budget total at 1h');
+    // Group headers with cumulative hours (Formation: 1h + 2.5h = 3.5h).
+    assert.ok(html.includes('Formation'), 'parent group label shown');
+    assert.ok(html.includes('(3.5h)'), 'cumulative hours on parent group');
+    assert.ok(html.includes('Recrutement'), 'leaf group label shown');
+    assert.ok(html.includes('(1h)'), 'hours on leaf group (Recrutement)');
+    assert.ok(html.includes('Onboarding'), 'leaf group label shown');
+    assert.ok(html.includes('(2.5h)'), 'hours on leaf group (Onboarding)');
+    assert.ok(html.includes('📁'), 'parent group shows folder icon');
+    assert.ok(html.includes('📄'), 'leaf group shows page icon');
+    // Task rows carry the crow class, show the title + hours, and append the completion date.
+    assert.ok(html.includes('crow'), 'task rows carry crow class');
+    assert.ok(html.includes('Tests unitaires (1h)'), 'task shown as title + hours');
+    assert.ok(html.includes('Devis client (1h)'), 'task without deadline shown with hours');
+    assert.ok(html.includes('✅ 2026-09-15'), 'completion date appended to task row');
+    assert.ok(html.includes('✅ 2026-09-13'), 'completion date shown even without deadline');
+    writeArtifact('completed-tree.html', html);
+    console.log('    PASS');
+  }
+
+  // --- 7. No completed tasks => empty state ---
+  console.log('Test 7: Empty completed state when nothing is done');
+  {
+    const emptyPages = [
+      { file: { path: 'Projets/Pure.md', tasks: [
+        { line: 1, completed: false, status: ' ', text: 'Only active 🆔 pa 📅 2026-09-21 ⏱ 1h' },
+      ] } },
+    ];
+    const root = runBundle(emptyPages, { today });
+    const html = findCompleted(root);
+    assert.ok(html, 'completed section rendered even with no completed tasks');
+    assert.ok(html.includes('No completed tasks found.'), 'empty state shown');
+    console.log('    PASS');
+  }
+
+  // --- 8. Completed tasks exist but none have a completion date => empty state ---
+  console.log('Test 8: Empty state when all completed tasks lack a completion date');
+  {
+    const pages = [
+      { file: { path: 'Projets/Pure.md', tasks: [
+        { line: 1, completed: true, status: 'x', text: 'Done without date ⏱ 1h' },
+        { line: 2, completed: true, status: 'x', text: 'Also done without date ⏱ 1h' },
+      ] } },
+    ];
+    const root = runBundle(pages, { today });
+    const html = findCompleted(root);
+    assert.ok(html, 'completed section rendered');
+    assert.ok(html.includes('No completed tasks found.'), 'empty state shown when nothing has a completion date');
+    assert.ok(!html.includes('Done without date'), 'filtered tasks not rendered');
     console.log('    PASS');
   }
 

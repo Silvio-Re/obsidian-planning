@@ -89,6 +89,11 @@ The dashboard renders four sections:
 2. **Gantt Chart** — visual schedule grouped by file/folder. Collapsible groups, dependency arrows, late tasks color-coded.
 3. **Execution List** — ordered list of what to do and when. Click any row to open the source task.
 4. **Ignored Tasks** — undone tasks with no effective deadline (review, correct, or delete).
+5. **Completed Tasks** — log of finished (`- [x]`) tasks, rendered as a **foldable tree** by project/subproject at the very end of the dashboard. It is a near-exact copy of the Gantt chart's first column: group headers (folder icon) carry the **cumulative hours** of every task under them (including nested subprojects), and each task row shows `title (hours)h` plus the completion date parsed from the `✅` marker:
+   `▾ 📁 Formation (3.5h)` → `▾ 📄 Recrutement (1h)` → `Tests unitaires (1h) ✅ 2026-09-15`
+   Branches fold/unfold with the ▸/▾ markers (or "fold all" / "unfold all"); click any row to open the source task.
+   Only finished tasks that carry a completion date (`✅ YYYY-MM-DD`) are listed; undone tasks and finished-but-undated ones are skipped.
+   A **From / To** date range at the top filters the tree by completion date (inclusive, day granularity); it defaults to the **current month** (From = 1st, To = last day). Clearing a field resets it to the current month.
 
 ### Visual Indicators
 
@@ -118,8 +123,9 @@ src/
     execution_list.js   — Ordered execution plan
     ignored.js          — Undeclared tasks
     parsing_errors.js   — Malformed metadata
+    completed.js        — Foldable project tree of finished ([x]) tasks (Gantt first-column layout)
   index.js              — Main orchestrator
-test/                   — 20 test files covering parsing, scheduling, capacity, and end-to-end render
+test/                   — 21 test files covering parsing, scheduling, capacity, and end-to-end render
   harness/
     sandbox.mjs         — DOM mock + bundle runner shared by the render tests
 scripts/

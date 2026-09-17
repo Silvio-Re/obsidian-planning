@@ -12,6 +12,7 @@ import { renderGantt } from './render/gantt.js';
 import { renderExecutionList } from './render/execution_list.js';
 import { renderIgnored, getIgnoreReason } from './render/ignored.js';
 import { renderParsingErrors } from './render/parsing_errors.js';
+import { renderCompleted } from './render/completed.js';
 
 // =============================================
 // MAIN EXECUTION
@@ -20,7 +21,7 @@ import { renderParsingErrors } from './render/parsing_errors.js';
 const pages = dv.pages('"Projets"');
 
 // Collect all planner data
-const { tasks: all, items, locks, dependents, markSet, warnings: parsingWarnings } = collectPlannerData(pages);
+const { tasks: all, items, locks, dependents, markSet, warnings: parsingWarnings, completed } = collectPlannerData(pages);
 
 const today = dv.date('today');
 const SCHEDULE_CONFIG = { startHour: 9, hoursPerDay: 8 };
@@ -79,3 +80,7 @@ if (!items.length) {
   dv.container.createEl('div', { text: 'Parsing errors (tasks with malformed metadata)' }).style.cssText = 'margin-top:16px;font-weight:700;font-size:13px;color:rgb(255,165,0);';
   renderParsingErrors(dv.container, parsingWarnings);
 }
+
+// ===== COMPLETED TASKS (always rendered, at the very end) =====
+dv.container.createEl('div', { text: 'Completed tasks' }).style.cssText = 'margin-top:24px;font-weight:700;font-size:13px;';
+renderCompleted(dv.container, completed, today);

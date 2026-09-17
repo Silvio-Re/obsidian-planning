@@ -1,9 +1,12 @@
 import assert from 'assert';
 import {
-  CLOCK, CALENDAR, ID_MARKER, BLOCK_MARKER,
-  PRIORITY, PRIORITY_RANK, PRIORITY_DEFAULT,
-  priorityRe, durRe, dateRe, idRe, blkRe,
-  parsePriority, ownDur, cleanTitle, baseName, fmtHours
+  CLOCK, CALENDAR, ID_MARKER, BLOCK_MARKER, CHECK,
+  PRIORITY, PRIORITY_RANK, PRIORITY_DEFAULT, PRIORITY_BY_RANK,
+  priorityRe, durRe, dateRe, idRe, blkRe, completionRe,
+  parsePriority, ownDur, cleanTitle, baseName, fmtHours, priorityEmoji, formatCompletedLine,
+  completionMonth, filterByCompletionMonth, currentMonth,
+  completionKey, filterByCompletionRange, monthStartKey, monthEndKey,
+  isCompleteDate, normDate
 } from '../src/constants.js';
 
 console.log('Testing constants.js extended coverage...');
@@ -226,6 +229,141 @@ assert.strictEqual(baseName('My File.md'), 'My File');
 assert.strictEqual(baseName('file_name_with_underscores.md'), 'file_name_with_underscores');
 
 console.log('    baseName: PASS');
+
+// --- CHECK marker ---
+console.log('  Testing CHECK marker...');
+assert.strictEqual(CHECK, '\u{2705}', 'CHECK is the green check mark');
+console.log('    CHECK: PASS');
+
+// --- completionRe ---
+console.log('  Testing completionRe...');
+assert.strictEqual((CHECK + ' 2026-09-15').match(completionRe)[1], '2026-09-15', 'simple ✅ date');
+assert.strictEqual((CHECK + '[2026-09-15]').match(completionRe)[1], '2026-09-15', 'bracketed ✅ date');
+assert.strictEqual((CHECK + '   2026-09-15').match(completionRe)[1], '2026-09-15', 'loose spacing');
+assert(!completionRe.test('just text'), 'no completion marker => no match');
+console.log('    completionRe: PASS');
+
+// --- priorityEmoji / PRIORITY_BY_RANK ---
+console.log('  Testing priorityEmoji...');
+assert.strictEqual(PRIORITY_BY_RANK[0], PRIORITY.P0, 'rank 0 => P0');
+assert.strictEqual(PRIORITY_BY_RANK[4], PRIORITY.P4, 'rank 4 => P4');
+assert.strictEqual(priorityEmoji(0), PRIORITY.P0, 'priorityEmoji P0');
+assert.strictEqual(priorityEmoji(1), PRIORITY.P1, 'priorityEmoji P1');
+assert.strictEqual(priorityEmoji(2), PRIORITY.P2, 'priorityEmoji P2 default');
+assert.strictEqual(priorityEmoji(99), PRIORITY.P2, 'unknown rank falls back to P2');
+console.log('    priorityEmoji: PASS');
+
+// --- formatCompletedLine ---
+console.log('  Testing formatCompletedLine...');
+const lineFull = formatCompletedLine({ title: 'Formulaire', dlStr: '2026-09-15', hours: 1, priority: 1, compDate: '2026-09-15' });
+assert.strictEqual(lineFull, '- [x] Formulaire ' + CALENDAR + ' [[[2026-09-15](2026-09-15)]] ' + CLOCK + ' 1h ' + PRIORITY.P1 + ' ' + CHECK + ' 2026-09-15', 'full metadata line');
+const lineMin = formatCompletedLine({ title: 'Only done', compDate: '2026-01-01' });
+assert.strictEqual(lineMin, '- [x] Only done ' + PRIORITY.P2 + ' ' + CHECK + ' 2026-01-01', 'minimal line (default prio, no date/duration)');
+const lineNodate = formatCompletedLine({ title: 'No date', hours: 3, priority: 0, compDate: '2026-02-02' });
+assert.strictEqual(lineNodate, '- [x] No date ' + CLOCK + ' 3h ' + PRIORITY.P0 + ' ' + CHECK + ' 2026-02-02', 'no deadline, no wikilink');
+console.log('    formatCompletedLine: PASS');
+
+// --- completionMonth ---
+console.log('  Testing completionMonth...');
+assert.deepStrictEqual(completionMonth('2026-09-15'), { year: 2026, month: 9 }, 'parses year+month');
+assert.deepStrictEqual(completionMonth('2024-01-03'), { year: 2024, month: 1 }, 'January => month 1');
+assert.strictEqual(completionMonth(null), null, 'null => null');
+assert.strictEqual(completionMonth(''), null, 'empty => null');
+assert.strictEqual(completionMonth('not-a-date'), null, 'garbage => null');
+console.log('    completionMonth: PASS');
+
+// --- filterByCompletionMonth ---
+console.log('  Testing filterByCompletionMonth...');
+const sample = [
+  { title: 'A', compDate: '2026-09-01' },
+  { title: 'B', compDate: '2026-09-20' },
+  { title: 'C', compDate: '2026-08-15' },
+  { title: 'D', compDate: null },
+];
+const sep = filterByCompletionMonth(sample, 2026, 9);
+assert.strictEqual(sep.length, 2, 'two September tasks');
+assert.deepStrictEqual(sep.map(t => t.title), ['A', 'B'], 'correct tasks selected');
+const aug = filterByCompletionMonth(sample, 2026, 8);
+assert.strictEqual(aug.length, 1, 'one August task');
+assert.strictEqual(aug[0].title, 'C', 'August task selected');
+const none = filterByCompletionMonth(sample, 2026, 7);
+assert.strictEqual(none.length, 0, 'no tasks in July');
+const withNulls = filterByCompletionMonth(sample, 2026, 9);
+assert.ok(!withNulls.some(t => t.compDate == null), 'null-dated tasks excluded');
+assert.strictEqual(filterByCompletionMonth(null, 2026, 9).length, 0, 'null input safe');
+console.log('    filterByCompletionMonth: PASS');
+
+// --- completionKey ---
+console.log('  Testing completionKey...');
+assert.strictEqual(completionKey('2026-09-15'), '2026-09-15', 'full date key');
+assert.strictEqual(completionKey('2024-01-03'), '2024-01-03', 'zero-padded');
+assert.strictEqual(completionKey(null), null, 'null => null');
+assert.strictEqual(completionKey(''), null, 'empty => null');
+assert.strictEqual(completionKey('not-a-date'), null, 'garbage => null');
+assert.strictEqual(completionKey(undefined), null, 'undefined => null');
+console.log('    completionKey: PASS');
+
+// --- monthStartKey / monthEndKey ---
+console.log('  Testing monthStartKey / monthEndKey...');
+assert.strictEqual(monthStartKey(2026, 9), '2026-09-01', 'first day of month');
+assert.strictEqual(monthEndKey(2026, 9), '2026-09-30', 'last day of September');
+assert.strictEqual(monthEndKey(2024, 2), '2024-02-29', 'leap year February');
+assert.strictEqual(monthEndKey(2026, 2), '2026-02-28', 'non-leap February');
+assert.strictEqual(monthEndKey(2026, 1), '2026-01-31', 'January has 31 days');
+assert.strictEqual(monthStartKey(2026, 12), '2026-12-01', 'December');
+console.log('    monthStartKey / monthEndKey: PASS');
+
+// --- filterByCompletionRange ---
+console.log('  Testing filterByCompletionRange...');
+const ran = [
+  { title: 'Sep15', compDate: '2026-09-15' },
+  { title: 'Sep01', compDate: '2026-09-01' },
+  { title: 'Sep30', compDate: '2026-09-30' },
+  { title: 'Aug10', compDate: '2026-08-10' },
+  { title: 'Oct05', compDate: '2026-10-05' },
+  { title: 'NoDate', compDate: null },
+];
+const sepRange = filterByCompletionRange(ran, '2026-09-01', '2026-09-30');
+assert.strictEqual(sepRange.length, 3, 'three September tasks');
+assert.deepStrictEqual(sepRange.map(t => t.title), ['Sep15', 'Sep01', 'Sep30'], 'in-month tasks selected');
+const midRange = filterByCompletionRange(ran, '2026-09-10', '2026-09-20');
+assert.deepStrictEqual(midRange.map(t => t.title), ['Sep15'], 'inclusive day range');
+const cross = filterByCompletionRange(ran, '2026-09-25', '2026-10-10');
+assert.deepStrictEqual(cross.map(t => t.title), ['Sep30', 'Oct05'], 'cross-month range');
+const openEnd = filterByCompletionRange(ran, '2026-10-01', null);
+assert.deepStrictEqual(openEnd.map(t => t.title), ['Oct05'], 'open end bound');
+const openStart = filterByCompletionRange(ran, null, '2026-08-31');
+assert.deepStrictEqual(openStart.map(t => t.title), ['Aug10'], 'open start bound includes earlier task');
+const emptyBounds = filterByCompletionRange(ran, '', '');
+assert.ok(!emptyBounds.some(t => t.compDate == null), 'null-dated tasks excluded even with open bounds');
+assert.strictEqual(filterByCompletionRange(null, '2026-09-01', '2026-09-30').length, 0, 'null input safe');
+console.log('    filterByCompletionRange: PASS');
+
+// --- currentMonth ---
+console.log('  Testing currentMonth...');
+assert.deepStrictEqual(currentMonth({ year: 2026, month: 9, day: 15 }), { year: 2026, month: 9 }, 'luxon-like object');
+const d = new Date(2023, 11, 1); // Dec 2023 (month index 11)
+assert.deepStrictEqual(currentMonth(d), { year: 2023, month: 12 }, 'native Date December');
+console.log('    currentMonth: PASS');
+
+// --- isCompleteDate / normDate ---
+console.log('  Testing isCompleteDate / normDate...');
+assert.strictEqual(isCompleteDate('2026-09-15'), true, 'full date is complete');
+assert.strictEqual(isCompleteDate('2026-9-1'), false, 'unpadded not complete');
+assert.strictEqual(isCompleteDate('2026-09'), false, 'partial not complete');
+assert.strictEqual(isCompleteDate('20260915'), false, 'no dashes not complete');
+assert.strictEqual(isCompleteDate(''), false, 'empty not complete');
+// normDate: raw digits
+assert.strictEqual(normDate('20260915'), '2026-09-15', 'raw digits -> yyyy-mm-dd');
+// normDate: keeps an already-padded value
+assert.strictEqual(normDate('2026-09-15'), '2026-09-15', 'padded stays intact');
+// normDate: leaves short input untouched while typing
+assert.strictEqual(normDate('202'), '202', 'year-only left as typed');
+assert.strictEqual(normDate('20260'), '2026-0', 'year+1 digit month padded');
+assert.strictEqual(normDate('2026-09-1'), '2026-09-1', 'partial pad preserved');
+// normDate: ignores stray non-digits in the middle
+assert.strictEqual(normDate('2026/09/15'), '2026-09-15', 'slashes normalized');
+console.log('    isCompleteDate / normDate: PASS');
 
 console.log('\nAll constants extended tests passed!');
 process.exit(0);

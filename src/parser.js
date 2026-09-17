@@ -2,13 +2,14 @@
 // This file uses dv and Obsidian-specific data structures
 // It's NOT testable outside Obsidian
 
-import { CALENDAR, ID_MARKER, BLOCK_MARKER, PRIORITY_DEFAULT, priorityRe, durRe, dateRe, idRe, blkRe, parsePriority, ownDur, cleanTitle, baseName } from './constants.js';
+import { CALENDAR, ID_MARKER, BLOCK_MARKER, PRIORITY_DEFAULT, priorityRe, durRe, dateRe, idRe, blkRe, completionRe, parsePriority, ownDur, cleanTitle, baseName } from './constants.js';
 
 // --- Data Collection ---
 export function collectAll(pages) {
   const all = [];
   const seen = new Set();
   const warnings = [];
+  const completed = [];
 
   for (const page of pages) {
     const path = page.file.path;
@@ -25,7 +26,24 @@ export function collectAll(pages) {
     for (const t of page.file.tasks) markChildren(t);
 
     for (const t of page.file.tasks) {
-      if (t.completed || t.status === '-') continue;
+      if (t.status === '-') continue;
+      // Completed ([x]) tasks are kept only for the completion log; they are never scheduled.
+      if (t.completed) {
+        const km = t.text.match(dateRe);
+        const dm = t.text.match(completionRe);
+        const noComp = t.text.replace(completionRe, '');
+        completed.push({
+          title: cleanTitle(noComp),
+          path,
+          file,
+          line: t.line,
+          dlStr: km ? km[1] : null,
+          hours: ownDur(t),
+          priority: parsePriority(t.text),
+          compDate: dm ? dm[1] : null,
+        });
+        continue;
+      }
       const key = `${path}:${t.line}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -91,7 +109,7 @@ export function collectAll(pages) {
     }
   }
 
-  return { all, seen, warnings };
+  return { all, seen, warnings, completed };
 }
 
 // --- Graph Building ---
@@ -164,7 +182,7 @@ export function chargeableHours(node, path, markSet) {
 
 // --- Main Data Collection ---
 export function collectPlannerData(pages) {
-  const { all, warnings } = collectAll(pages);
+  const { all, warnings, completed } = collectAll(pages);
   const { dependents, markSet } = buildGraph(all);
   const items = [];
   const locks = [];
@@ -208,5 +226,5 @@ export function collectPlannerData(pages) {
     });
   }
 
-  return { tasks: all, items, locks, dependents, markSet, warnings };
+  return { tasks: all, items, locks, dependents, markSet, warnings, completed };
 }

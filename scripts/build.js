@@ -25,6 +25,7 @@ const SRC_FILES = [
   'src/render/execution_list.js',
   'src/render/ignored.js',
   'src/render/parsing_errors.js',
+  'src/render/completed.js',
   'src/index.js',
 ];
 

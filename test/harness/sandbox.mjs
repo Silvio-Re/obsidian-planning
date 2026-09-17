@@ -115,3 +115,16 @@ export function findExecHTML(root) {
   });
   return found;
 }
+
+// Return the innerHTML of the completed-tasks container. Rows carry class="crow"; the empty
+// state uses the "No completed tasks found." label instead.
+export function findCompleted(root) {
+  let found = null;
+  walkTree(root, (el) => {
+    if (!found && typeof el.innerHTML === 'string' &&
+        (el.innerHTML.includes('class="crow"') || el.innerHTML.includes('No completed tasks found.'))) {
+      found = el.innerHTML;
+    }
+  });
+  return found;
+}
