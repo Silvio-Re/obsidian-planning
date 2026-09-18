@@ -149,6 +149,19 @@ a single release commit (regenerated artifacts + the `package.json` bump) that i
 never force-pushing, and refusing if the tag already exists. Edit `.github/release-notes.md` first
 (the first non-empty line is the release title).
 
+#### Release checklist
+
+- [ ] Tests pass: `npm test`
+- [ ] Working tree is clean (commit feature work first, or use `--allow-dirty`)
+- [ ] You are on `main` and up to date with `origin/main`
+- [ ] `.github/release-notes.md` first line = release title, body = changelog (release notes are *only* the changelog — agent workflow belongs in the README/AGENTS.md)
+- [ ] Both bundled artifacts (`planning.md` and `daily.md`) build cleanly
+- [ ] Run `npm run release -- --dry-run` to preview the plan with no side effects
+- [ ] Review the plan, then run `npm run release -- --type <patch|minor>`, and verify the tag + GitHub release carry both assets
+
+> Tip: before tagging, build each artifact and paste it into a live note (e.g. `daily.md` into a
+> dated daily note) to confirm the rendering before it is shipped.
+
 ### Adding a Feature
 
 1. Add/extend a test in `test/`.

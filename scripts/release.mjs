@@ -16,7 +16,7 @@
 //     fast-forward and the tag is always new.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,8 +48,8 @@ const bumpVer = (base, type) => {
 };
 
 // --- resolve target version ---
-const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-let next = explicit || bumpVer(pkg.version, bump);
+const curPkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+let next = explicit || bumpVer(curPkg.version, bump);
 if (!semver(next)) fail(`invalid version "${next}" (expected x.y.z)`);
 const tag = `v${next}`;
 
@@ -81,24 +81,38 @@ if (!title) fail('release-notes.md has an empty title (first non-empty line)');
 // --- dry run: print the plan and stop before any side effect ---
 if (dry) {
   console.log(`DRY RUN — would release ${tag}: "${title}"`);
-  console.log('plan: npm test (already passed) → npm run build → git add -A →');
+  console.log('plan: bump package.json + package-lock.json → npm run build → npm test → git add -A →');
   console.log('      commit "chore: release ' + tag + '" → tag v' + next + ' → push → gh release create');
   process.exit(0);
 }
 
-// --- release (all-or-nothing) ---
+// --- bump the version in package.json + package-lock.json BEFORE build so stamps and lock stay in
+// sync with the tag (package.json is the source of truth — AGENTS.md). ---
+const pkgPath = resolve(root, 'package.json');
+const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+pkg.version = next;
+writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+const lockPath = resolve(root, 'package-lock.json');
+if (existsSync(lockPath)) {
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  if (lock.version !== next) lock.version = next;
+  if (lock.packages && lock.packages[''] && lock.packages[''].version !== next) lock.packages[''].version = next;
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+}
 if (!ok(run('npm', ['run', 'build']))) fail('build failed');
 if (!ok(run('git', ['add', '-A']))) fail('git add -A failed');
-// Commit regenerated artifacts (e.g. planning.md) so the release tag is self-contained. When there
-// is nothing to commit, leave HEAD as-is so the tag anchors the existing (feature) commit — no empty
-// "release" commit.
+// Commit regenerated artifacts (e.g. planning.md, daily.md) + the version bump so the release tag is
+// self-contained. When there is nothing to commit, leave HEAD as-is so the tag anchors the existing
+// (feature) commit — no empty "release" commit.
 if (run('git', ['status', '--porcelain']).out.trim() !== '') {
   if (!ok(run('git', ['commit', '-m', `chore: release ${tag}`]))) fail('release commit failed');
 }
 if (!ok(run('git', ['tag', '-a', tag, '-m', title]))) fail('tag failed');
 if (!ok(run('git', ['push']))) fail('push to origin/main failed');
 if (!ok(run('git', ['push', '--tags']))) fail('push tag failed');
-if (!ok(run('gh', ['release', 'create', tag, '--title', title, '--notes-file', notesPath, 'planning.md'])))
+// Both bundled artifacts ship as release assets: the dashboard script (planning.md) and the
+// daily-note script (daily.md).
+if (!ok(run('gh', ['release', 'create', tag, '--title', title, '--notes-file', notesPath, 'planning.md', 'daily.md'])))
   fail('gh release create failed');
 
 console.log(`✓ released ${tag}: https://github.com/Silvio-Re/obsidian-planning/releases/tag/${tag}`);
