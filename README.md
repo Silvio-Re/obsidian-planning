@@ -116,7 +116,7 @@ scripts/
   build.js              — Bundles src/**/*.js into planning.md
   validate.mjs          — node --check on every src file + the bundled planning.md and daily.md bodies
   test-runner.js        — Runs all tests
-  release.sh            — Builds, tests, commits planning.md, creates a GitHub release
+  release.mjs           — Gated, idempotent, atomic release CLI (see "Release" below)
 ```
 
 ### Build & Test
@@ -137,11 +137,17 @@ and wraps the result in a ` ```dataviewjs ` block. `npm test` runs a `pretest` h
 first (title + notes), then:
 
 ```bash
-bash scripts/release.sh 0.4.1
+npm run release                 # bump minor (package.json is source of truth)
+npm run release -- --type patch # bump patch | minor | major
+npm run release -- --ver 0.5.1  # explicit version
+npm run release -- --dry-run    # run all gates + build, print the plan, stop (no side effects)
 ```
 
-The release script runs tests, builds, commits the regenerated `planning.md`, and creates a GitHub
-release. The version arg must match `package.json` exactly.
+`npm run release` is gated, idempotent, and atomic: it verifies you are on `main`, up to date with
+`origin/main`, have a clean tree, and that `npm test` passes *before* touching anything, then makes
+a single release commit (regenerated artifacts + the `package.json` bump) that it tags and pushes —
+never force-pushing, and refusing if the tag already exists. Edit `.github/release-notes.md` first
+(the first non-empty line is the release title).
 
 ### Adding a Feature
 

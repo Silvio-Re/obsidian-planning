@@ -8,11 +8,13 @@ Do **not** run `git commit`, `git push`, or `git tag` unless the user explicitly
 
 Leave new or changed code in the working tree. The sanctioned commit points are:
 
-- `scripts/release.sh <version>` (the release workflow)
+- `npm run release` / `npm run release -- --type patch|minor|major --ver 0.5.1` (the release workflow,
+  implemented by `scripts/release.mjs` — gated, idempotent, atomic)
 - an explicit user request such as *"ok now do the git stuff please"* or *"release v0.x"*
 
-When one of those is triggered, do the git work as `release.sh` / the request intends, then
-stop and report what was committed.
+When one of those is triggered, do the git work as `release.mjs` / the request intends, then
+stop and report what was committed. `release.mjs` enforces the preconditions (on main, up to date,
+clean tree, tests passing, no duplicate tag), so it is safe to re-run.
 
 ## Version discipline
 
