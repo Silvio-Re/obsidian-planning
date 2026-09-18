@@ -74,7 +74,8 @@ The planner uses **Earliest Deadline First (EDF)**:
 3. **Execution List** — ordered, what-to-do-next with times. Click any row to open the source task.
 4. **Ignored Tasks** — undone tasks with no effective deadline (review, correct, or delete).
 5. **Completed Tasks** — finished (`- [x]`) tasks as a foldable tree by project/subproject, with a
-   From/To date-range filter (defaults to the current month).
+   From/To date-range filter (defaults to the current month). Copy the same block into a dated daily
+   note (`YYYY-MM-DD`) to see only the tasks completed that day.
 
 ### Visual Indicators
 
@@ -105,13 +106,15 @@ src/
     execution_list.js   — Ordered execution plan
     ignored.js          — Undeclared tasks
     parsing_errors.js   — Malformed metadata
-    completed.js        — Foldable project tree of finished tasks
-  index.js              — Main orchestrator
+    completed.js        — Foldable project tree of finished tasks (single source of truth)
+    daily_notes.js      — "Completed today" view for daily-note templates
+  index.js              — Main orchestrator (dashboard entry)
+  daily_notes.js        — Daily-note entry (filters the same tree to the note's date)
 test/                   — Parsing, scheduling, capacity, dependency, build, and render tests
   harness/sandbox.mjs   — DOM mock + bundle runner shared by the render tests
 scripts/
   build.js              — Bundles src/**/*.js into planning.md
-  validate.mjs          — node --check on every src file + the bundled planning.md body
+  validate.mjs          — node --check on every src file + the bundled planning.md and daily.md bodies
   test-runner.js        — Runs all tests
   release.sh            — Builds, tests, commits planning.md, creates a GitHub release
 ```

@@ -49,7 +49,12 @@ console.log('  Testing render imports...');
 const allRenderFiles = fs.readdirSync(path.join(ROOT, 'src/render'));
 for (const f of allRenderFiles) {
   const content = fs.readFileSync(path.join(ROOT, 'src/render', f), 'utf8');
-  assert(content.includes("from '../utils.js'"), `${f} imports from utils.js`);
+  // Render files pull shared helpers from utils.js directly (capacity_chart, gantt…), or reuse the
+  // shared grouped tree from completed.js (daily_notes.js) — both are valid shared-code imports.
+  assert(
+    content.includes("from '../utils.js'") || content.includes("from './completed.js'"),
+    `${f} imports shared helpers (utils.js or the completed tree)`
+  );
 }
 console.log('    all render files import utils: PASS');
 

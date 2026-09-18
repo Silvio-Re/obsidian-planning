@@ -14,9 +14,11 @@ console.log('  Testing build script file ordering...');
 // Read the build script
 const buildScript = fs.readFileSync(path.join(ROOT, 'scripts/build.js'), 'utf8');
 
-// Check SRC_FILES array is in the right order
-const srcFilesMatch = buildScript.match(/const SRC_FILES = \[([\s\S]*?)\];/);
-assert(srcFilesMatch, 'SRC_FILES array exists');
+// Check the planning-artifact file list is in the right order.
+// build.js groups source files per release artifact (ARTIFACTS); the planning.md dashboard chain
+// is the canonical ordering (constants first, index last).
+const srcFilesMatch = buildScript.match(/planning\.md':\s*\{\s*files:\s*\[([\s\S]*?)\]/);
+assert(srcFilesMatch, 'planning.md artifact files array exists');
 const srcFilesStr = srcFilesMatch[1];
 
 // Verify order: constants first, index last
@@ -39,7 +41,8 @@ const srcFiles = [
   'src/constants.js', 'src/utils.js', 'src/parser.js', 'src/scheduler.js',
   'src/capacity.js', 'src/render/capacity_chart.js', 'src/render/gantt.js',
   'src/render/execution_list.js', 'src/render/ignored.js', 'src/render/parsing_errors.js',
-  'src/index.js',
+  'src/render/completed.js', 'src/render/daily_notes.js',
+  'src/execution_sequence.js', 'src/daily_notes.js', 'src/index.js',
 ];
 for (const f of srcFiles) {
   assert(fs.existsSync(path.join(ROOT, f)), `${f} exists`);

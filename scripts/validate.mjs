@@ -40,22 +40,26 @@ for (const f of srcFiles) {
   if (!checkNode(f)) ok = false;
 }
 
-// Bundled planning.md body (fences stripped) — validated as an ESM module.
-const mdPath = path.join(ROOT, 'planning.md');
-if (fs.existsSync(mdPath)) {
+// Each bundled release file's body (fences stripped) is validated as an ESM module, so a syntax
+// error in src/*.js can't silently land in a release file and break it in Obsidian.
+const BUNDLED_FILES = ['planning.md', 'daily.md'];
+for (const mdName of BUNDLED_FILES) {
+  const mdPath = path.join(ROOT, mdName);
+  if (!fs.existsSync(mdPath)) {
+    console.error(`  ! ${mdName} not found \u2014 run \`npm run build\` first`);
+    ok = false;
+    continue;
+  }
   const md = fs.readFileSync(mdPath, 'utf8');
   const body = md.replace(/^```dataviewjs\n/, '').replace(/\n```\s*$/, '');
-  const tmp = path.join(os.tmpdir(), 'planning-check-' + process.pid + '.mjs');
+  const tmp = path.join(os.tmpdir(), `${mdName.replace(/[^a-z0-9]/gi, '-')}-check-` + process.pid + '.mjs');
   fs.writeFileSync(tmp, body);
   try {
     if (!checkNode(tmp)) ok = false;
   } finally {
     try { fs.unlinkSync(tmp); } catch (_) {}
   }
-  console.log('  checking bundled planning.md body');
-} else {
-  console.error('  ! planning.md not found \u2014 run `npm run build` first');
-  ok = false;
+  console.log(`  checking bundled ${mdName} body`);
 }
 
 console.log(ok ? '  All syntax checks passed.' : '  Syntax checks FAILED.');

@@ -8,7 +8,7 @@
 # This script:
 #   1. Runs all tests
 #   2. Builds planning.md from modular sources
-#   3. Commits and pushes the regenerated planning.md
+#   3. Commits and pushes the full release (all changed source, build artifacts, docs, tests)
 #   4. Creates a GitHub release with planning.md as asset
 #
 # Naming conventions (enforced):
@@ -53,18 +53,17 @@ echo "2/4  Building planning.md..."
 npm run build
 echo "   ✓ planning.md built"
 
-# --- Step 3: Commit regenerated planning.md ---
+# --- Step 3: Commit the full release tree ---
+# A release tag MUST point at a commit that contains the entire release: source changes, the
+# regenerated planning.md + daily.md, the package.json version bump, tests, and docs. Committing
+# only planning.md (old behavior) would tag a commit that excludes the feature itself.
 echo ""
-echo "3/4  Committing regenerated planning.md..."
-git add planning.md
-# Only commit if planning.md actually changed (build may be idempotent)
-if git diff --cached --quiet planning.md; then
-  echo "   ✓ planning.md up to date (no changes to commit)"
-else
-  git commit -m "chore: regenerate planning.md for $TAG" > /dev/null 2>&1
-  git push origin main > /dev/null 2>&1
-  echo "   ✓ planning.md committed and pushed"
-fi
+echo "3/4  Committing the full release tree..."
+git add -A
+# Always create a release commit (even when the build is idempotent) so the tag has a basis.
+git commit -m "chore: release $TAG" --allow-empty > /dev/null 2>&1
+git push origin main > /dev/null 2>&1
+echo "   ✓ release committed and pushed to main"
 
 # --- Step 4: Create GitHub release ---
 echo ""

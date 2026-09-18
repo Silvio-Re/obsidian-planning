@@ -34,6 +34,7 @@ const TEST_FILES = [
   'test/late_meeting_deps.test.js',
   'test/execution_sequence.test.js',
   'test/render_bundle.test.js',
+  'test/daily_notes.test.mjs',
 ];
 
 console.log('Running tests...\n');

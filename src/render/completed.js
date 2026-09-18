@@ -21,11 +21,16 @@ import { esc, escA, clip, openTask } from '../utils.js';
  * @param {Array<{path:string, line:number, title:string, hours:number, compDate:string|null}>} completed
  * @param {DateTime|Date} today
  */
-export function renderCompleted(container, completed, today) {
+export function renderCompleted(container, completed, today, opts = {}) {
   const geo = { pad: 6, step: 14, max: 460 };
 
   const box = container.createEl('div');
   box.style.cssText = 'font-size:13px;border:1px solid rgba(128,128,128,0.2);border-radius:6px;overflow:hidden;margin-top:4px;';
+
+  // When opts.onlyDate is a valid "YYYY-MM-DD", show exactly that day (daily-note view): no
+  // From/To toolbar and a single-date filter. Otherwise (main dashboard) it falls back to the
+  // current-month range with the interactive toolbar.
+  const onlyDate = opts.onlyDate && isCompleteDate(opts.onlyDate) ? opts.onlyDate : null;
 
   // Only tasks that have a completion date are ever shown.
   const done = (completed || []).filter(t => t.compDate);
@@ -159,6 +164,7 @@ export function renderCompleted(container, completed, today) {
   // The text field is authoritative for reading the range; it falls back to the default
   // (current month) when empty/incomplete.
   function readRange() {
+    if (onlyDate) return { start: onlyDate, end: onlyDate };
     const ts = box.querySelectorAll('.cdate-start-text');
     const te = box.querySelectorAll('.cdate-end-text');
     const s = ts.length ? ts[0].value : '';
@@ -185,9 +191,17 @@ export function renderCompleted(container, completed, today) {
   function render() {
     const { start, end } = readRange();
     const visible = filterByCompletionRange(done, start, end);
+
+    // Single-day view: when the requested day has no completed tasks, surface the empty state
+    // instead of an empty bordered box. (Main dashboard keeps the toolbar + its own empty check.)
+    if (onlyDate && visible.length === 0) {
+      box.innerHTML = '<div style="padding:8px;color:gray;font-size:12px;text-align:center;">No completed tasks found.</div>';
+      return;
+    }
+
     build(visible);
 
-    box.innerHTML = buildToolbar(start, end) + listWrap + rowsHtml() + '</div>';
+    box.innerHTML = (onlyDate ? '' : buildToolbar(start, end)) + listWrap + rowsHtml() + '</div>';
 
     // Re-bind handlers after each rebuild (querySelectorAll is a no-op in the test mock).
     box.querySelectorAll('.cfoldall').forEach(b => b.onclick = () => {

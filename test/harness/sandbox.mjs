@@ -13,11 +13,12 @@ import { DateTime } from 'luxon';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PLANNING_MD = path.join(__dirname, '..', '..', 'planning.md');
 
-// Strip the ```dataviewjs fence so the body is plain runnable JS.
-export function loadBundle() {
-  const md = fs.readFileSync(PLANNING_MD, 'utf8');
+// Strip the ```dataviewjs fence so the body is plain runnable JS. `file` selects which bundled
+// release artifact (default planning.md); both artifacts live in the repo root and are each a
+// self-contained dataviewjs bundle.
+export function loadBundle(file = 'planning.md') {
+  const md = fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
   return md.replace(/^```dataviewjs\n/, '').replace(/\n```\s*$/, '');
 }
 
@@ -70,6 +71,35 @@ export function runBundle(pages, { today = '2026-09-15' } = {}) {
     app: {},
     pages: () => pages,
     date: (s) => (s === 'today' ? DateTime.fromISO(today) : DateTime.fromISO(s)),
+    paragraph: () => {},
+    container: root,
+  };
+
+  const sandbox = {
+    dv,
+    document: { body: { classList: { contains: () => false } } },
+    requestAnimationFrame: () => {},
+    setTimeout: (fn) => fn(),
+    clearTimeout: () => {},
+    Math, Date, JSON, console, Array, Object, Set, Map,
+    parseInt, parseFloat, isNaN, Infinity, RegExp, String, Number,
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(code, sandbox);
+  return root;
+}
+
+// Run the bundled daily.md dashboard (the daily-note "completed today" view). Exposes dv.current()
+// so the entry can read the daily note's title (yyyy-mm-dd) and filter completed tasks to that day.
+export function runBundleDaily(pages, { today = '2026-09-15', dailyTitle = '2026-09-15' } = {}) {
+  const code = loadBundle('daily.md');
+  const root = makeEl();
+
+  const dv = {
+    app: {},
+    pages: () => pages,
+    date: (s) => (s === 'today' ? DateTime.fromISO(today) : DateTime.fromISO(s)),
+    current: () => ({ file: { name: dailyTitle } }),
     paragraph: () => {},
     container: root,
   };

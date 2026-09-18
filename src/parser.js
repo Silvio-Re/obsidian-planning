@@ -4,6 +4,26 @@
 
 import { CALENDAR, ID_MARKER, BLOCK_MARKER, PRIORITY_DEFAULT, priorityRe, durRe, dateRe, idRe, blkRe, completionRe, parsePriority, ownDur, cleanTitle, baseName } from './constants.js';
 
+// --- Completion extraction (shared, pure) ---
+// Parses the completion metadata of a finished ([x]) task. Kept pure (only `text` + identity
+// fields) so both `collectAll` (main dashboard) and the daily-note view parse ✅ completion
+// dates identically — a single source of truth for what "done" means.
+export function extractCompletedTask({ text, path, file, line }) {
+  const km = text.match(dateRe);
+  const dm = text.match(completionRe);
+  const noComp = text.replace(completionRe, '');
+  return {
+    title: cleanTitle(noComp),
+    path,
+    file,
+    line,
+    dlStr: km ? km[1] : null,
+    hours: ownDur({ text }),
+    priority: parsePriority(text),
+    compDate: dm ? dm[1] : null,
+  };
+}
+
 // --- Data Collection ---
 export function collectAll(pages) {
   const all = [];
@@ -29,19 +49,7 @@ export function collectAll(pages) {
       if (t.status === '-') continue;
       // Completed ([x]) tasks are kept only for the completion log; they are never scheduled.
       if (t.completed) {
-        const km = t.text.match(dateRe);
-        const dm = t.text.match(completionRe);
-        const noComp = t.text.replace(completionRe, '');
-        completed.push({
-          title: cleanTitle(noComp),
-          path,
-          file,
-          line: t.line,
-          dlStr: km ? km[1] : null,
-          hours: ownDur(t),
-          priority: parsePriority(t.text),
-          compDate: dm ? dm[1] : null,
-        });
+        completed.push(extractCompletedTask({ text: t.text, path, file, line: t.line }));
         continue;
       }
       const key = `${path}:${t.line}`;
