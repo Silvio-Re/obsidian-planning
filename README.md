@@ -1,6 +1,7 @@
 # obsidian-planning
 
-A DataviewJS-based planning dashboard for Obsidian. Turns task lists with emoji metadata into a visual schedule with capacity analysis, Gantt charts, and execution ordering.
+A DataviewJS-based planning dashboard for Obsidian. Turns task lists with emoji metadata into a
+visual schedule with capacity analysis, a Gantt chart, and an execution-order list.
 
 ## Setup
 
@@ -22,21 +23,9 @@ Tasks are Obsidian task lines (`- [ ]`) with emoji-based metadata embedded in th
 | 🆔 | ID | `🆔 task-id` | `- [ ] Implement login 🆔 auth-module` |
 | ⛔ | Dependency | `⛔ dep-id` | `- [ ] Write tests ⛔ auth-module` |
 
-### Priority Levels
+### Priority
 
-| Priority | Emoji | Meaning |
-|----------|-------|---------|
-| P0 | 🔺 | Highest — urgent, critical path |
-| P1 | ⏫ | High — should be done first |
-| P2 | 🔼 | Medium — default priority |
-| P3 | 🔽 | Low — can be deferred |
-| P4 | ⏬ | Lowest — do when free |
-
-If no priority is specified, tasks default to **P2**.
-
-### Duration
-
-Specify work hours needed to complete the task. Supports fractions.
+P0–P4, from highest (`🔺`) to lowest (`⏬`). No priority specified → defaults to **P2**.
 
 ```markdown
 - [ ] Review PR ⏱ 2.5h 🔺
@@ -45,55 +34,47 @@ Specify work hours needed to complete the task. Supports fractions.
 
 ### Deadline
 
-The date by which the task should be finished.
-
-```markdown
-- [ ] Fix auth bug 📅 2025-01-15 🔺
-```
-
-#### Locked Tasks (Meetings)
-
-A deadline with a time (`YYYY-MM-DD HH:MM`) becomes a **locked task** — a hard block in the schedule that cannot be moved.
+The date by which the task should be finished. A deadline with a time (`YYYY-MM-DD HH:MM`)
+becomes a **locked task** — a hard, unmovable block in the schedule (e.g. a meeting). Locked tasks
+consume capacity on their day but are never scheduled to a different time.
 
 ```markdown
 - [ ] Sprint planning 📅 2025-01-20 14:00 ⏱ 1h 🔽
 ```
 
-Locked tasks consume capacity on their day but are **not scheduled** — they occupy a fixed slot.
-
 ### Dependencies
 
-Mark a task as depending on another task's ID. The scheduler will place the dependency first.
+Mark a task as depending on another task's ID. The scheduler places the dependency first.
 
 ```markdown
 - [ ] Implement login 🆔 auth-module ⏱ 3h 🔺
 - [ ] Write login tests ⛔ auth-module ⏱ 2h 🔺
 ```
 
-Dependencies create a **priority inheritance** chain: a dependent task inherits the highest priority of all tasks it depends on. Deadlines also propagate down the chain — if a dependent has an earlier deadline, it becomes the effective deadline for the dependency.
+Dependencies create a **priority inheritance** chain: a dependent task inherits the highest
+priority of everything it depends on. Deadlines propagate down the chain too — if a dependent has
+an earlier deadline, it becomes the effective deadline for its dependency.
 
 ## Scheduling
 
-The planner uses **Earliest Deadline First (EDF)** scheduling:
+The planner uses **Earliest Deadline First (EDF)**:
 
 - **Work hours**: 9:00–17:00 weekdays, 8h/day (configurable in `SCHEDULE_CONFIG`)
 - **Single resource**: only one task runs at a time
 - **Meetings are fixed**: locked tasks occupy hard blocks
-- **Priority correction**: if high-priority tasks would be late, they are locked to earlier slots and the schedule recomputed
+- **Priority correction**: if a high-priority task would be late, it is locked to an earlier slot
+  and the schedule is recomputed
 
-### Output Dashboard
+## Output Dashboard
 
-The dashboard renders four sections:
-
-1. **Capacity Chart** — cumulative hours owed vs. weekday capacity. Red bars = inherited deadlines. Click a deadline column to see which tasks must be cleared.
-2. **Gantt Chart** — visual schedule grouped by file/folder. Collapsible groups, dependency arrows, late tasks color-coded.
-3. **Execution List** — ordered list of what to do and when. Click any row to open the source task.
+1. **Capacity Chart** — cumulative hours owed vs. weekday capacity. Red bars = inherited deadlines;
+   click a column to see which tasks must be cleared.
+2. **Gantt Chart** — visual schedule grouped by file/folder, collapsible groups, dependency arrows,
+   late tasks color-coded.
+3. **Execution List** — ordered, what-to-do-next with times. Click any row to open the source task.
 4. **Ignored Tasks** — undone tasks with no effective deadline (review, correct, or delete).
-5. **Completed Tasks** — log of finished (`- [x]`) tasks, rendered as a **foldable tree** by project/subproject at the very end of the dashboard. It is a near-exact copy of the Gantt chart's first column: group headers (folder icon) carry the **cumulative hours** of every task under them (including nested subprojects), and each task row shows `title (hours)h` plus the completion date parsed from the `✅` marker:
-   `▾ 📁 Formation (3.5h)` → `▾ 📄 Recrutement (1h)` → `Tests unitaires (1h) ✅ 2026-09-15`
-   Branches fold/unfold with the ▸/▾ markers (or "fold all" / "unfold all"); click any row to open the source task.
-   Only finished tasks that carry a completion date (`✅ YYYY-MM-DD`) are listed; undone tasks and finished-but-undated ones are skipped.
-   A **From / To** date range at the top filters the tree by completion date (inclusive, day granularity); it defaults to the **current month** (From = 1st, To = last day). Clearing a field resets it to the current month.
+5. **Completed Tasks** — finished (`- [x]`) tasks as a foldable tree by project/subproject, with a
+   From/To date-range filter (defaults to the current month).
 
 ### Visual Indicators
 
@@ -115,86 +96,65 @@ src/
   constants.js          — Emoji constants, regex patterns, parsing helpers
   utils.js              — HTML escaping, markdown rendering, openTask
   parser.js             — Collect tasks from Obsidian pages, build dependency graph
-  scheduler.js          — EDF scheduling algorithm with priority correction
-  capacity.js           — Capacity calculation (hours owed vs. available)
+  scheduler.js          — EDF scheduling with priority correction
+  capacity.js           — Hours owed vs. available
+  execution_sequence.js — Build the execution-order list
   render/
     capacity_chart.js   — SVG capacity chart with zoom/pan
     gantt.js            — SVG Gantt chart with collapsible tree
     execution_list.js   — Ordered execution plan
     ignored.js          — Undeclared tasks
     parsing_errors.js   — Malformed metadata
-    completed.js        — Foldable project tree of finished ([x]) tasks (Gantt first-column layout)
+    completed.js        — Foldable project tree of finished tasks
   index.js              — Main orchestrator
-test/                   — 21 test files covering parsing, scheduling, capacity, and end-to-end render
-  harness/
-    sandbox.mjs         — DOM mock + bundle runner shared by the render tests
+test/                   — Parsing, scheduling, capacity, dependency, build, and render tests
+  harness/sandbox.mjs   — DOM mock + bundle runner shared by the render tests
 scripts/
   build.js              — Bundles src/**/*.js into planning.md
   validate.mjs          — node --check on every src file + the bundled planning.md body
   test-runner.js        — Runs all tests
+  release.sh            — Builds, tests, commits planning.md, creates a GitHub release
 ```
 
-### Build
+### Build & Test
 
 ```bash
-npm test          # Run all tests
-npm run build     # Bundle into planning.md
+npm test          # test + build (pretest rebuilds and syntax-validates planning.md)
+npm run build     # regenerate planning.md
 npm run dev       # test + build
-npm run check     # same as build
 ```
 
-The build process:
-1. Reads all `src/` files in dependency order
-2. Resolves `import`/`export` statements (inlines dependencies)
-3. Deduplicates top-level declarations
-4. Wraps the result in a ` ```dataviewjs ` code block → `planning.md`
+The build reads `src/` in dependency order, inlines `import`/`export`, deduplicates declarations,
+and wraps the result in a ` ```dataviewjs ` block. `npm test` runs a `pretest` hook that rebuilds
+`planning.md` and syntax-validates it, so you always test a fresh bundle — never a stale one.
 
-### Testing
+### Release
 
-20 test files cover:
-- Parser (metadata extraction, date parsing, duration)
-- Scheduler (EDF, priority inversion correction, locked tasks, late-meeting detection)
-- Dependency graph (inheritance, transitive deadlines)
-- Capacity calculation (meetings, cumulative deficit)
-- Build pipeline (idempotency, output integrity)
-- Edge cases (real-world data, malformed input)
-- End-to-end render (bundled `planning.md` executed against fake pages; Gantt SVG + execution HTML)
-
-`npm test` runs a `pretest` hook first: it rebuilds `planning.md`, then runs
-`scripts/validate.mjs` (`node --check` on every source file and the bundled body). You therefore
-always test a fresh, syntax-valid bundle — never a stale one.
+`package.json` is the single source of truth for the version. Edit `.github/release-notes.md`
+first (title + notes), then:
 
 ```bash
-npm test
-# → 20 passed, 0 failed
+bash scripts/release.sh 0.4.1
 ```
 
-**Render previews.** The end-to-end render test (`test/render_bundle.test.js`) writes the generated
-artifacts of each fixture to `test/output/` for inspection:
-
-- `test/output/*.svg` — the raw Gantt SVG and execution-list HTML (string/diff inspection).
-- `test/output/png/*.png` — faithful rasterizations of each Gantt SVG, rendered with `resvg-js`
-  (full `<tspan>`/CSS support, so the bold **LATE** label and row colors render correctly).
-
-These are regenerated on every `npm test`. Open the PNGs to visually verify the Gantt.
+The release script runs tests, builds, commits the regenerated `planning.md`, and creates a GitHub
+release. The version arg must match `package.json` exactly.
 
 ### Adding a Feature
 
-1. Write or extend a test in `test/`.
-2. Add logic to the appropriate `src/` module.
-3. Run `npm test` — all tests must pass (this also rebuilds and syntax-validates via `pretest`).
-4. Run `npm run build` — `planning.md` is regenerated.
-5. Place `planning.md` contents into an Obsidian note and verify in Obsidian.
+1. Add/extend a test in `test/`.
+2. Add logic to the relevant `src/` module.
+3. `npm test` (rebuilds + validates via `pretest`) — all must pass.
+4. `npm run build` — `planning.md` is regenerated.
+5. Paste `planning.md` into an Obsidian note and verify.
 
 ### Gotchas
 
-- **SVG vs. HTML namespaces.** The Gantt is built as one SVG string. Never inject HTML markup into
-  an SVG `<text>` element — `<b>LATE</b>` inside `<text>` makes the browser's SVG parser swallow every
-  row after it and render them as plain text (no colored bars). Use the SVG-correct `<tspan>` for inline
-  styling; keep `<b>` only in the execution-list panel, which is HTML `<div>` content.
-- **Render modules can only be tested via the bundle.** `render/*.js` import non-exported helpers from
-  `utils.js` (`esc`, `clip`, `renderMd`, `openTask`), which only exist after `build.js` inlines them.
-  Use `test/harness/sandbox.mjs` to run the bundled `planning.md` against fake pages and assert on the
-  generated SVG/HTML — importing the modules directly will fail.
-- **The dashboard renders nothing with zero regular tasks.** `index.js` only renders when `items.length`
-  is non-zero, so render-test fixtures must contain at least one regular (non-meeting) task.
+- **SVG vs. HTML namespaces.** The Gantt is one SVG string. Never inject HTML into an SVG
+  `<text>` element — `<b>LATE</b>` makes the browser's SVG parser swallow every following row.
+  Use SVG `<tspan>` for inline styling; keep `<b>` only in the execution-list panel (HTML `div`s).
+- **Render modules are only testable via the bundle.** `render/*.js` import non-exported helpers
+  from `utils.js` that only exist after `build.js` inlines them. Use `test/harness/sandbox.mjs` to
+  run the bundled `planning.md` against fake pages — importing them directly fails.
+- **The dashboard renders nothing with zero regular tasks.** `index.js` only renders when
+  `items.length` is non-zero, so render-test fixtures must include at least one regular task.

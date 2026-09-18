@@ -1,41 +1,33 @@
-Out-of-working-hours meetings keep their requested date
+Versioning tooling, AGENTS.md, and a leaner README
 
-What's New in v0.4.1
+What's New in v0.4.2
 ====================
 
-Previously, a meeting scheduled **outside** working hours (e.g. `📅 2026-09-23 17:30 ⏱ 4h`
-when the working day ends at 17:00) was rolled onto the **next** calendar day — both in the
-ordered execution list and in the Gantt. This release keeps the meeting on the date the user
-actually requested.
+v0.4.2 does not change the dashboard's behavior — the schedule, Gantt, capacity chart, execution
+order, and parsing are identical to **v0.4.1**. It tidies up how the project is versioned and
+documented, so future releases are safer and easier.
 
-### 🗓 Scheduling
-- **Meetings keep their requested date.** A meeting outside working hours now appears on its
-  own requested calendar day in the execution list instead of being pushed to the next day.
-  In-hours and straddling meetings are unchanged (a straddling meeting still reserves only its
-  in-hours portion).
-- **Gantt:** the meeting bar now extends visually past the working day into the next working
-  day, while the **first task of the next working day still starts at 09:00** — the two simply
-  overlap, which is fine.
-- **Scheduling is unaffected.** Only in-hours meeting time is locked against tasks, so task
-  placement (deadlines, EDF order) behaves exactly as before.
+### 🛠 Versioning Tooling
+- **`package.json` is the single source of truth for the version.** It is the only place the
+  version is declared; `planning.md`'s header is stamped from it on every build.
+- **`release.sh` now guards the version.** The release argument must match `package.json` exactly;
+  a mismatch fails immediately — before tests, commit, or release — instead of silently creating
+  or overwriting the wrong tag. This prevents the classic `release.sh 0.4` when the intended tag
+  was `v0.4.1`.
 
-### 🛠 Developer Tools
-- **Testable execution sequence.** Built the execution sequence (tasks + meetings) in a new
-  `src/execution_sequence.js` module instead of inline in `src/index.js`, and wired
-  `src/render/execution_list.js` to use it. Meetings now carry their requested date
-  (`meetDateStr`) so the execution list groups them correctly.
-- **New tests.** Added `test/execution_sequence.test.js` (6 cases: pre-hours, post-hours,
-  in-hours, straddling, "does not push the next day", and execution-list grouping).
-- **Build.** `scripts/build.js` now bundles `src/execution_sequence.js`.
+### 📄 Documentation
+- **`AGENTS.md` added.** Records the working-tree convention (do not commit/push/tag unless asked;
+  `release.sh` and explicit "git stuff"/release requests are the sanctioned points) plus version
+  discipline, emoji-escape rules, and the Gantt SVG gotchas.
+- **README rewritten.** Leaner and easier to scan; the reference (task syntax, markers, scheduling,
+  output) is unchanged.
 
-### Changes since v0.4
-- `src/scheduler.js` — un-clamp a meeting's display position into its own working day for the
-  Gantt; still clamp only in-hours time into the meeting lock.
-- `src/execution_sequence.js` — new, testable execution-sequence builder.
-- `src/index.js`, `src/render/execution_list.js` — use the extracted builder.
-- `test/execution_sequence.test.js` — new suite; `scripts/build.js`, `scripts/test-runner.js`
-  wired for it.
-- Total: **23 tests, all passing**.
+### Changes since v0.4.1
+- `package.json`, `package-lock.json` — version is the single declared source.
+- `scripts/release.sh` — version guard against tag/version drift.
+- `AGENTS.md` — new agent conventions.
+- `README.md` — streamlined; `scripts/build.js` entry added to the source tree list.
+- `.github/release-notes.md.template` — example tag/version updated to `v0.4` / `v0.4.1`.
 
 ---
 
@@ -58,8 +50,8 @@ actually requested.
 **How to release (future agents):**
 ```bash
 # Edit .github/release-notes.md first (fill in title + notes)
-# Then run:
-bash scripts/release.sh 0.4.1
+# Then run (version MUST match package.json):
+bash scripts/release.sh 0.4.2
 ```
 
 **After releasing:**

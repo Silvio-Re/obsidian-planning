@@ -23,8 +23,20 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 # --- Arguments ---
-VERSION="${1:?Usage: bash scripts/release.sh <version>  (e.g. 0.2 or 0.2.0)}"
+VERSION="${1:?Usage: bash scripts/release.sh <version>  (e.g. 0.4.1)}"
 TAG="v${VERSION}"
+
+# --- Version guard (prevents tag/version drift)
+# package.json is the single source of truth. The release version MUST equal it exactly,
+# so a stray `release.sh 0.4` when package.json is 0.4.1 fails before any test/commit/release
+# instead of overwriting an existing tag. Reconcile by bumping package.json (+ package-lock).
+PKG_VERSION="$(node -p "require('./package.json').version")"
+if [ "$VERSION" != "$PKG_VERSION" ]; then
+  echo "ERROR: release version '$VERSION' does not match package.json version '$PKG_VERSION'."
+  echo "   Bump package.json and package-lock.json to '$VERSION', or pass the exact version."
+  echo "   Continuing would create tag '$TAG', which may overwrite an existing release."
+  exit 1
+fi
 
 # --- Step 1: Run tests ---
 echo "════════════════════════════════════════"

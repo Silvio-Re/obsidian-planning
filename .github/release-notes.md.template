@@ -25,7 +25,7 @@ What's New in <VERSION>
 ## Release Checklist
 
 **Naming conventions (MUST follow):**
-- Git tag: `vX.Y` or `vX.Y.Z` (e.g. `v0.2`, `v1.0.0`)
+- Git tag: `vX.Y` or `vX.Y.Z` (e.g. `v0.4`, `v0.4.1`); MUST match `package.json`
 - Release name: auto-generated from first line of this file
 - Commit message: `<type>: description` (follow conventional commits)
 - Release notes file: `.github/release-notes.md` (edit before each release)
