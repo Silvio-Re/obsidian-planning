@@ -1,6 +1,6 @@
 {
   "name": "obsidian-planning",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Obsidian DataviewJS planning plugin - testable and maintainable",
   "type": "module",
   "scripts": {

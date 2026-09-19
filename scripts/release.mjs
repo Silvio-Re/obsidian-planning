@@ -112,7 +112,9 @@ if (!ok(run('git', ['push']))) fail('push to origin/main failed');
 if (!ok(run('git', ['push', '--tags']))) fail('push tag failed');
 // Both bundled artifacts ship as release assets: the dashboard script (planning.md) and the
 // daily-note script (daily.md).
-if (!ok(run('gh', ['release', 'create', tag, '--title', title, '--notes-file', notesPath, 'planning.md', 'daily.md'])))
+// Name follows the pre-0.5.1 convention: "vX.Y.Z — <title>" so every release name carries its version.
+const releaseName = `${tag} — ${title}`;
+if (!ok(run('gh', ['release', 'create', tag, '--title', releaseName, '--notes-file', notesPath, 'planning.md', 'daily.md'])))
   fail('gh release create failed');
 
 console.log(`✓ released ${tag}: https://github.com/Silvio-Re/obsidian-planning/releases/tag/${tag}`);
