@@ -124,6 +124,12 @@ export function findHighestPriorityEarliestDeadlineLate(sched, lockedKeys) {
  * (tie-break: longer duration first).
  *
  * Pure function - takes items, lockedItems, allocator config
+ *
+ * Lateness rule (on purpose): a deadline counts from midnight of its date, and `late`
+ * is `endCal > dlIdx`, so the deadline day itself is a buffer — a task is on time only
+ * if it finishes by end of the previous working day. Work placed on the deadline's
+ * date is late by definition. Do not "fix" this to `dlIdx + 1`; it is the intended
+ * safety margin (documented in README > Deadline).
  */
 export function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
   const lockedWithTimes = [];
@@ -147,7 +153,16 @@ export function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
   }
 
   // Schedule remaining items respecting dependencies (topological EDF)
-  const scheduled = new Set(lockedItems.map(it => `${it.path}:${it.line}`));
+  // `scheduled` holds both "path:line" keys and task ids: deps reference ids (🆔),
+  // while lock/correction entries are tracked by key. Ids are [\w-]+ so they can
+  // never collide with a "path:line" key. A dep on an id that never appears
+  // (typo, or a task with no own id) keeps the task unready and it falls through
+  // to the cycle fallback below, preserving the orphan-dependency behavior.
+  const scheduled = new Set();
+  lockedItems.forEach(it => {
+    scheduled.add(`${it.path}:${it.line}`);
+    if (it.id != null) scheduled.add(it.id);
+  });
   const unscheduled = new Map();
   remainingItems.forEach(item => unscheduled.set(`${item.path}:${item.line}`, item));
   const result = [];
@@ -175,6 +190,7 @@ export function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
           const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
           const late = endCal > dlIdx;
           scheduled.add(`${item.path}:${item.line}`);
+          if (item.id != null) scheduled.add(item.id);
           result.push({ ...item, dlIdx, segs, startCal, endCal, late });
         }
       }
@@ -186,6 +202,7 @@ export function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
     const chosen = ready[0];
     unscheduled.delete(`${chosen.path}:${chosen.line}`);
     scheduled.add(`${chosen.path}:${chosen.line}`);
+    if (chosen.id != null) scheduled.add(chosen.id);
 
     const dlIdx = chosen.deadline.diff(today, 'days').days;
     const segs = chosen.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(chosen.duration);
@@ -271,13 +288,36 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
       break;
     }
 
-    // Lock this task
-    const taskKey = `${taskToLock.path}:${taskToLock.line}`;
-    lockedKeys.add(taskKey);
-    remainingItems = remainingItems.filter(item =>
-      `${item.path}:${item.line}` !== taskKey
-    );
-    lockedItems.push(taskToLock);
+    // Lock this task — and, transitively, every one of its still-remaining dependencies,
+    // in dependency order. Locking a task without its deps would place it FIRST in the
+    // schedule (locked items are allocated before everything else), running it before
+    // the very tasks it depends on. Pulling the dep closure in, ancestors first, keeps
+    // the correction from violating the dependency order it is supposed to protect.
+    const itemsByKey = new Map(remainingItems.map(item => [`${item.path}:${item.line}`, item]));
+    const depClosure = [];
+    const visited = new Set();
+    const collectDeps = (item) => {
+      const key = `${item.path}:${item.line}`;
+      if (visited.has(key)) return;
+      visited.add(key);
+      // deps first (post-order): a task is pushed only after everything it needs.
+      for (const depId of item.deps || []) {
+        for (const cand of remainingItems) {
+          if (cand.id === depId && !lockedKeys.has(`${cand.path}:${cand.line}`)) collectDeps(cand);
+        }
+      }
+      depClosure.push(item);
+    };
+    collectDeps(taskToLock);
+
+    for (const item of depClosure) {
+      const taskKey = `${item.path}:${item.line}`;
+      lockedKeys.add(taskKey);
+      remainingItems = remainingItems.filter(rem =>
+        `${rem.path}:${rem.line}` !== taskKey
+      );
+      lockedItems.push(item);
+    }
   }
 
   const sched = finalSched;

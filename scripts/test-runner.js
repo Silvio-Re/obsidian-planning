@@ -35,6 +35,7 @@ const TEST_FILES = [
   'test/execution_sequence.test.js',
   'test/render_bundle.test.js',
   'test/daily_notes.test.mjs',
+  'test/task_opener.test.js',
 ];
 
 console.log('Running tests...\n');

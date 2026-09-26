@@ -65,6 +65,11 @@ const dirty = run('git', ['status', '--porcelain']).out.trim();
 if (dirty && !allowDirty) fail('working tree not clean (commit changes or pass --allow-dirty)');
 
 if (run('git', ['tag', '-l', tag]).out.includes(tag)) fail(`tag ${tag} already exists`);
+// The tag gate must ALSO check the remote: a tag pushed earlier (but not fetched, or
+// deleted locally) would otherwise pass the local-only gate, letting the release get as
+// far as commit + local tag before `git push --tags` fails with "already exists" —
+// a half-done release (pushed commit, unpushed tag, no GitHub release).
+if (run('git', ['ls-remote', '--tags', 'origin', tag]).out.includes(tag)) fail(`tag ${tag} already exists on origin`);
 
 if (!ok(run('npm', ['test']))) fail('npm test failed — fix tests before releasing');
 
@@ -81,7 +86,7 @@ if (!title) fail('release-notes.md has an empty title (first non-empty line)');
 // --- dry run: print the plan and stop before any side effect ---
 if (dry) {
   console.log(`DRY RUN — would release ${tag}: "${title}"`);
-  console.log('plan: bump package.json + package-lock.json → npm run build → npm test → git add -A →');
+  console.log('plan: bump package.json + package-lock.json → npm run build → npm test (rebuilt bundle) → git add -A →');
   console.log('      commit "chore: release ' + tag + '" → tag v' + next + ' → push → gh release create');
   process.exit(0);
 }
@@ -100,6 +105,11 @@ if (existsSync(lockPath)) {
   writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
 }
 if (!ok(run('npm', ['run', 'build']))) fail('build failed');
+// Re-run the full suite AFTER the bump + rebuild: the earlier gate tested the OLD bundle,
+// and the release commit must carry a bundle stamped with the new version that has actually
+// been test-executed (pretest rebuilds + syntax-validates, so this also re-validates the
+// exact bytes that will be committed and tagged).
+if (!ok(run('npm', ['test']))) fail('npm test failed on the rebuilt bundle — fix tests before releasing');
 if (!ok(run('git', ['add', '-A']))) fail('git add -A failed');
 // Commit regenerated artifacts (e.g. planning.md, daily.md) + the version bump so the release tag is
 // self-contained. When there is nothing to commit, leave HEAD as-is so the tag anchors the existing

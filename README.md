@@ -42,6 +42,11 @@ consume capacity on their day but are never scheduled to a different time.
 - [ ] Sprint planning 📅 2025-01-20 14:00 ⏱ 1h 🔽
 ```
 
+**On purpose:** the deadline date itself is a buffer, not usable working time. A task is on time
+only if it finishes by midnight *before* its deadline — i.e. by end of the previous working day.
+Any work scheduled to land on the deadline's date is flagged late. This reserves the deadline day
+for review and slippage instead of planning work into it.
+
 ### Dependencies
 
 Mark a task as depending on another task's ID. The scheduler places the dependency first.

@@ -133,6 +133,38 @@ const alloc15 = createAllocator(today, workDays, {}, { startHour: 9, hoursPerDay
 const sched6 = scheduleWithEDF(items5, [], alloc15, today);
 assert.strictEqual(sched6[0].late, false, 'task with distant deadline is not late');
 
+// Deadline-day buffer (on purpose, do not "fix"): a deadline counts from midnight of
+// its date, so finishing exactly ON the deadline's date is late — the last safe day is
+// the one before the deadline. This reserves the deadline day as a review/slippage
+// buffer instead of planning work into it.
+// Case 1: 1h task due today (dlIdx 0) scheduled 9:00-10:00 today → endCal 0.125 > 0 → late
+const itemsBuf1 = [
+  { duration: 1, deadline: today, title: 'due-today', path: 'j', line: 1, file: 'j.md', id: 'B1', deps: [], priority: 2 },
+];
+const allocBuf1 = createAllocator(today, workDays, {}, { startHour: 9, hoursPerDay: 8 });
+const schedBuf1 = scheduleWithEDF(itemsBuf1, [], allocBuf1, today);
+assert.strictEqual(schedBuf1[0].endCal, 0.125, '1h task scheduled today 9:00-10:00');
+assert.strictEqual(schedBuf1[0].dlIdx, 0, 'deadline today has dlIdx 0');
+assert.strictEqual(schedBuf1[0].late, true, 'work on the deadline date is late by definition');
+
+// Case 2: 1h task due tomorrow (dlIdx 1) scheduled today → endCal 0.125 <= 1 → on time
+const itemsBuf2 = [
+  { duration: 1, deadline: today.plus({ days: 1 }), title: 'due-tomorrow', path: 'k', line: 1, file: 'k.md', id: 'B2', deps: [], priority: 2 },
+];
+const allocBuf2 = createAllocator(today, workDays, {}, { startHour: 9, hoursPerDay: 8 });
+const schedBuf2 = scheduleWithEDF(itemsBuf2, [], allocBuf2, today);
+assert.strictEqual(schedBuf2[0].late, false, 'finishing before the deadline day (end of previous day) is on time');
+
+// Case 3: task spilling onto the deadline date (scheduled today, 2h, due tomorrow at midnight):
+// ends today+0.25 < 1 → on time. And a task that ends exactly at midnight of the deadline
+// (endCal == dlIdx) is on time — the strict comparison `>` marks only work placed on the date.
+const itemsBuf3 = [
+  { duration: 2, deadline: today.plus({ days: 1 }), title: 'ends-today', path: 'l', line: 1, file: 'l.md', id: 'B3', deps: [], priority: 2 },
+];
+const allocBuf3 = createAllocator(today, workDays, {}, { startHour: 9, hoursPerDay: 8 });
+const schedBuf3 = scheduleWithEDF(itemsBuf3, [], allocBuf3, today);
+assert.strictEqual(schedBuf3[0].late, false, 'endCal == dlIdx boundary is on time (strict >)');
+
 // No items, no locks
 const alloc16 = createAllocator(today, workDays, {}, { startHour: 9, hoursPerDay: 8 });
 const sched7 = scheduleWithEDF([], [], alloc16, today);
@@ -146,6 +178,48 @@ assert.strictEqual(d.plus({ days: 5 }).weekday, 6, 'Jan 6 = Saturday');
 assert.strictEqual(d.plus({ days: 6 }).weekday, 7, 'Jan 7 = Sunday');
 assert.strictEqual(d.plus({ days: 7 }).weekday, 1, 'Jan 8 = Monday');
 console.log('    scheduleWithEDF: PASS');
+
+// --- Priority-correction loop must respect dependencies ---
+// When the correction locks a high-priority late task, locked items are allocated FIRST,
+// which would place the task before its own dependencies. The lock must pull the task's
+// dep closure in (ancestors first) so the corrected schedule never runs a task before its deps.
+console.log('  Testing priority correction vs dependencies...');
+{
+  const { computeSchedule } = await import('../src/scheduler.js');
+  const S = { startHour: 9, hoursPerDay: 8 };
+  const t0 = DateTime.fromISO('2024-01-01'); // Monday (weekday=1)
+
+  // Repro: X (P0) depends on Y (P2); Z (P1) independent. All due today -> all late,
+  // inversion among late exists -> correction locks X. Without the dep closure, the
+  // schedule used to become X -> Z -> Y (X before its own dependency).
+  const Y = { duration: 4, deadline: t0, title: 'Y', path: 'y', line: 1, file: 'y', id: 'y', deps: [], priority: 2 };
+  const X = { duration: 4, deadline: t0, title: 'X', path: 'x', line: 1, file: 'x', id: 'x', deps: ['y'], priority: 0 };
+  const Z = { duration: 4, deadline: t0, title: 'Z', path: 'z', line: 1, file: 'z', id: 'z', deps: [], priority: 1 };
+  const s1 = computeSchedule([Y, X, Z], [], t0, S);
+  const order1 = s1.sched.map(t => t.title);
+  assert.strictEqual(order1.join(''), 'YXZ', `dep respected under correction: got ${order1.join(' -> ')}`);
+  const y1 = s1.sched.find(t => t.id === 'y');
+  const x1 = s1.sched.find(t => t.id === 'x');
+  assert.ok(y1.startCal < x1.startCal, 'dependency Y starts before dependent X');
+  assert.ok(x1.startCal < s1.sched.find(t => t.id === 'z').startCal, 'correction still hoists X before lower-priority Z');
+
+  // Transitive closure: X -> M -> Y chain; locking X must pull M and Y first, in order.
+  const Yc = { duration: 2, deadline: t0, title: 'Yc', path: 'a', line: 1, file: 'a', id: 'yc', deps: [], priority: 3 };
+  const Mc = { duration: 2, deadline: t0, title: 'Mc', path: 'b', line: 1, file: 'b', id: 'mc', deps: ['yc'], priority: 3 };
+  const Xc = { duration: 2, deadline: t0, title: 'Xc', path: 'c', line: 1, file: 'c', id: 'xc', deps: ['mc'], priority: 0 };
+  const Wc = { duration: 2, deadline: t0, title: 'Wc', path: 'd', line: 1, file: 'd', id: 'wc', deps: [], priority: 1 };
+  const s2 = computeSchedule([Yc, Mc, Xc, Wc], [], t0, S);
+  const order2 = s2.sched.map(t => t.title);
+  assert.strictEqual(order2.join(''), 'YcMcXcWc', `transitive dep closure: got ${order2.join(' -> ')}`);
+
+  // Sanity: correction still hoists a dep-free P0 above a P1 (no deps to pull in).
+  const lo = { duration: 4, deadline: t0, title: 'lo', path: 'e', line: 1, file: 'e', id: 'lo', deps: [], priority: 3 };
+  const hi = { duration: 4, deadline: t0, title: 'hi', path: 'f', line: 1, file: 'f', id: 'hi', deps: [], priority: 0 };
+  const s3 = computeSchedule([lo, hi], [], t0, S);
+  assert.strictEqual(s3.sched[0].title, 'hi', 'dep-free correction still hoists the highest priority');
+  assert.strictEqual(s3.sched[1].title, 'lo', 'lower priority follows');
+}
+console.log('  priority correction vs dependencies: PASS');
 
 console.log('\nAll scheduler advanced tests passed!');
 process.exit(0);

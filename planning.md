@@ -244,11 +244,22 @@ function clip(s, k) {
 
 // Task opener utility - creates a function to open tasks in Obsidian
 function makeTaskOpener(app) {
-  function selectLine(path, line, tries) {
-    const target = app.workspace.getLeavesOfType('markdown').find(l => 
-      l.view && l.view.file && l.view.file.path === path
+  // Select a task line in an open markdown view. `leafHint` is the leaf returned by the
+  // synchronous part of openFile(): when the file is opened in a NEW tab the workspace's
+  // leaf list only exposes it after the view loads, so searching leaves alone races the
+  // load and gives up after the retries. Preferring the hint first, then falling back to
+  // the workspace search, makes the line selection work for left and middle click alike.
+  function selectLine(path, line, tries, leafHint) {
+    // Prefer an already-open leaf (avoids hijacking a duplicate new tab), then fall back
+    // to the opened leaf as hint — when the file opens in a NEW tab the workspace's leaf
+    // list only exposes it after the view loads, so the hint is the only reliable handle.
+    const candidates = [];
+    for (const l of app.workspace.getLeavesOfType('markdown')) candidates.push(l);
+    if (leafHint) candidates.push(leafHint);
+    const target = candidates.find(l =>
+      l && l.view && l.view.file && l.view.file.path === path && l.view.editor
     );
-    if (target && target.view.editor) {
+    if (target) {
       app.workspace.setActiveLeaf(target, { focus: true });
       const ed = target.view.editor;
       const len = (ed.getLine(line) || '').length;
@@ -258,28 +269,28 @@ function makeTaskOpener(app) {
     }
     else if (tries > 0) setTimeout(() => selectLine(path, line, tries - 1), 50);
   }
+  function openAt(el) {
+    const p = el.getAttribute('data-path');
+    const l = parseInt(el.getAttribute('data-line'), 10);
+    // getLeaf('tab') returns a leaf whose view is replaced asynchronously; openFile
+    // resolves with the same leaf, so pass it through as the selection hint.
+    const leaf = app.workspace.getLeaf('tab');
+    leaf.openFile(app.vault.getAbstractFileByPath(p), {
+      active: true,
+      state: { line: l }
+    });
+    selectLine(p, l, 12, leaf);
+  }
   return (el) => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
-      const p = el.getAttribute('data-path');
-      const l = parseInt(el.getAttribute('data-line'), 10);
-      app.workspace.getLeaf('tab').openFile(app.vault.getAbstractFileByPath(p), { 
-        active: true, 
-        state: { line: l } 
-      });
-      selectLine(p, l, 12);
+      openAt(el);
     });
     el.addEventListener('auxclick', (e) => {
       if (e.button === 1) {
-        const p = el.getAttribute('data-path');
-        const l = parseInt(el.getAttribute('data-line'), 10);
         e.preventDefault();
         e.stopPropagation();
-        app.workspace.getLeaf('tab').openFile(app.vault.getAbstractFileByPath(p), { 
-          active: true, 
-          state: { line: l } 
-        });
-        selectLine(p, l, 12);
+        openAt(el);
       }
     });
   };
@@ -326,6 +337,24 @@ function collectAll(pages) {
   const seen = new Set();
   const warnings = [];
   const completed = [];
+
+  // --- Pass 1: collect every task's ID so dependencies can be validated ---
+  // A dep can reference a task defined anywhere in the vault (any page, any order),
+  // so the known-ID set must be complete before any ⛔ can be checked. Subtasks are
+  // visited explicitly: Dataview lists them flat inside file.tasks, but recursing
+  // keeps the set correct under either shape.
+  const knownIds = new Set();
+  const collectId = (t) => {
+    if (t.status !== '-' && !t.completed) {
+      const idm = t.text.match(idRe);
+      if (idm) knownIds.add(idm[1].replace(/[^a-zA-Z0-9_-]+$/, ''));
+    }
+    for (const c of t.subtasks ?? []) collectId(c);
+  };
+  for (const page of pages) {
+    for (const t of page.file.tasks) collectId(t);
+  }
+
 
   for (const page of pages) {
     const path = page.file.path;
@@ -405,6 +434,17 @@ function collectAll(pages) {
         isIndented,
         _parsingErrors: parsingErrors,
       };
+
+      // Unknown dependency check (pass 2, once all IDs are known): a ⛔ pointing at an
+      // ID that no task carries is a typo or a stale reference — the scheduler can never
+      // satisfy it, so surface it like any other malformed metadata instead of silently
+      // scheduling the task as if it had no constraint. Completed and cancelled tasks
+      // don't count as dependency targets: a dep on finished work is not a scheduling
+      // constraint, and treating it as known would hide a stale reference.
+      const unknownDeps = taskEntry.deps.filter(dep => !knownIds.has(dep));
+      if (unknownDeps.length) {
+        parsingErrors.push(`Unknown dependency: ${unknownDeps.join(', ')}`);
+      }
 
       if (parsingErrors.length) {
         warnings.push({ text: t.text, path, line: t.line, errors: parsingErrors });
@@ -493,6 +533,10 @@ function collectPlannerData(pages) {
 
   for (const r of all) {
     if (r.locked) {
+      // A meeting whose date failed to parse (mDate null) must not become a lock: the
+      // scheduler and renderers assume lk.day is a valid DateTime and would crash the
+      // whole dashboard. The parsing-error panel already flags the task with the reason.
+      if (!r.mDate) continue;
       const h = chargeableHours(r.node, r.path, markSet);
       if (h > 0) {
         locks.push({
@@ -661,6 +705,12 @@ function findHighestPriorityEarliestDeadlineLate(sched, lockedKeys) {
  * (tie-break: longer duration first).
  *
  * Pure function - takes items, lockedItems, allocator config
+ *
+ * Lateness rule (on purpose): a deadline counts from midnight of its date, and `late`
+ * is `endCal > dlIdx`, so the deadline day itself is a buffer — a task is on time only
+ * if it finishes by end of the previous working day. Work placed on the deadline's
+ * date is late by definition. Do not "fix" this to `dlIdx + 1`; it is the intended
+ * safety margin (documented in README > Deadline).
  */
 function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
   const lockedWithTimes = [];
@@ -684,7 +734,16 @@ function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
   }
 
   // Schedule remaining items respecting dependencies (topological EDF)
-  const scheduled = new Set(lockedItems.map(it => `${it.path}:${it.line}`));
+  // `scheduled` holds both "path:line" keys and task ids: deps reference ids (🆔),
+  // while lock/correction entries are tracked by key. Ids are [\w-]+ so they can
+  // never collide with a "path:line" key. A dep on an id that never appears
+  // (typo, or a task with no own id) keeps the task unready and it falls through
+  // to the cycle fallback below, preserving the orphan-dependency behavior.
+  const scheduled = new Set();
+  lockedItems.forEach(it => {
+    scheduled.add(`${it.path}:${it.line}`);
+    if (it.id != null) scheduled.add(it.id);
+  });
   const unscheduled = new Map();
   remainingItems.forEach(item => unscheduled.set(`${item.path}:${item.line}`, item));
   const result = [];
@@ -712,6 +771,7 @@ function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
           const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
           const late = endCal > dlIdx;
           scheduled.add(`${item.path}:${item.line}`);
+          if (item.id != null) scheduled.add(item.id);
           result.push({ ...item, dlIdx, segs, startCal, endCal, late });
         }
       }
@@ -723,6 +783,7 @@ function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
     const chosen = ready[0];
     unscheduled.delete(`${chosen.path}:${chosen.line}`);
     scheduled.add(`${chosen.path}:${chosen.line}`);
+    if (chosen.id != null) scheduled.add(chosen.id);
 
     const dlIdx = chosen.deadline.diff(today, 'days').days;
     const segs = chosen.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(chosen.duration);
@@ -808,13 +869,36 @@ function computeSchedule(items, locks, today, SCHEDULE) {
       break;
     }
 
-    // Lock this task
-    const taskKey = `${taskToLock.path}:${taskToLock.line}`;
-    lockedKeys.add(taskKey);
-    remainingItems = remainingItems.filter(item =>
-      `${item.path}:${item.line}` !== taskKey
-    );
-    lockedItems.push(taskToLock);
+    // Lock this task — and, transitively, every one of its still-remaining dependencies,
+    // in dependency order. Locking a task without its deps would place it FIRST in the
+    // schedule (locked items are allocated before everything else), running it before
+    // the very tasks it depends on. Pulling the dep closure in, ancestors first, keeps
+    // the correction from violating the dependency order it is supposed to protect.
+    const itemsByKey = new Map(remainingItems.map(item => [`${item.path}:${item.line}`, item]));
+    const depClosure = [];
+    const visited = new Set();
+    const collectDeps = (item) => {
+      const key = `${item.path}:${item.line}`;
+      if (visited.has(key)) return;
+      visited.add(key);
+      // deps first (post-order): a task is pushed only after everything it needs.
+      for (const depId of item.deps || []) {
+        for (const cand of remainingItems) {
+          if (cand.id === depId && !lockedKeys.has(`${cand.path}:${cand.line}`)) collectDeps(cand);
+        }
+      }
+      depClosure.push(item);
+    };
+    collectDeps(taskToLock);
+
+    for (const item of depClosure) {
+      const taskKey = `${item.path}:${item.line}`;
+      lockedKeys.add(taskKey);
+      remainingItems = remainingItems.filter(rem =>
+        `${rem.path}:${rem.line}` !== taskKey
+      );
+      lockedItems.push(item);
+    }
   }
 
   const sched = finalSched;

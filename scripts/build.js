@@ -101,13 +101,14 @@ function bundle(fileContents, files) {
       }
     }
 
-    // Remove export statements
+    // Remove export/import statements — LINE-ANCHORED ONLY. A mid-line pass
+    // (/export\s+/g) would rewrite the word "export" inside string literals and
+    // comments (e.g. a tooltip 'export this report' became 'this report'), silently
+    // corrupting behavior. Every src/ import/export starts at column 0, so the
+    // anchored patterns cover them all; validate.mjs then fails the build if any
+    // import/export statement survives (a leftover would also break the bundle's syntax).
     content = content.replace(/^export\s+/gm, '');
-    content = content.replace(/export\s+/g, '');
-
-    // Remove import statements
-    content = content.replace(/^import\s+.*?\s*;\s*$/gm, '');
-    content = content.replace(/import\s*.*?\s*;/g, '');
+    content = content.replace(/^import[^\n]*;\s*$/gm, '');
 
     // Deduplicate const/let/var declarations
     const lines = content.split('\n');

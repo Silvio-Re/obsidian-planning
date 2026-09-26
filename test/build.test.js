@@ -88,5 +88,34 @@ assert(testRunner.includes('TEST_FILES'), 'defines TEST_FILES');
 assert(testRunner.includes('Results:'), 'reports results');
 console.log('    test-runner structure: PASS');
 
+// --- Import/export stripping must be line-anchored (no string-literal corruption) ---
+// The build used to run a mid-line pass (/export\s+/g and /import\s*.*?\s*;/g) over whole
+// files, rewriting the word "export"/"import" inside string literals: a tooltip
+// 'export this report' silently became 'this report'. The stripping must only touch
+// statements that start a line.
+console.log('  Testing import/export stripping is line-anchored...');
+{
+  const content = [
+    "const msg = 'export this report please';",
+    'const msg2 = "import the data now";',
+    'export function foo() {}',
+    "import { bar } from './bar.js';",
+  ].join('\n');
+  const buildScript = fs.readFileSync(path.join(ROOT, 'scripts/build.js'), 'utf8');
+  // Fail loudly if build.js regresses to a mid-line (non-anchored) stripping pass.
+  assert(!/replace\(\/export\\s\+\/g/.test(buildScript), 'no mid-line /export\\s+/g pass in build.js');
+  assert(!/replace\(\/import\\s\*.*?\\s\*;\/g/.test(buildScript), 'no mid-line import-stripping pass in build.js');
+  assert(/replace\(\/\^export\\s\+\/gm/.test(buildScript), 'export stripping is line-anchored (^export, gm)');
+  assert(/replace\(\/\^import\[\^\\n\]\*;\\s\*\$\/gm/.test(buildScript), 'import stripping is line-anchored (^import, gm)');
+  // Replicate the anchored transformation and verify strings survive, statements don't.
+  let out = content.replace(/^export\s+/gm, '');
+  out = out.replace(/^import[^\n]*;\s*$/gm, '');
+  assert(out.includes('export this report please'), "string literal containing 'export' is preserved");
+  assert(out.includes('import the data now'), "string literal containing 'import' is preserved");
+  assert(!/^export function foo/m.test(out), 'real export statement at line start is stripped');
+  assert(!/^import /m.test(out), 'real import statement at line start is stripped');
+}
+console.log('    line-anchored stripping: PASS');
+
 console.log('\nAll build tests passed!');
 process.exit(0);

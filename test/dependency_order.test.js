@@ -208,9 +208,97 @@ if (!chain1OK || !chain2OK) {
   assert.fail('Chain order violated');
 }
 
+// Test 5: Reversed input order — chain C→B→A fed as [C, B, A]
+// The ready-check matches deps (ids) against the scheduled set, so a dep-having
+// task must never fall through to the cycle fallback (which ignores EDF).
+// This regressed when `scheduled` only held "path:line" keys: deps are ids.
+console.log('\nTest 5: Reversed chain in input order [C, B, A]');
+const items5 = [
+  {
+    id: 'C5',
+    deps: ['B5'],
+    deadline: DateTime.fromISO('2025-01-27'),
+    duration: 2,
+    title: 'Task C (depends on B)',
+    path: 'c5', line: 1, file: 'c5', priority: 2
+  },
+  {
+    id: 'B5',
+    deps: ['A5'],
+    deadline: DateTime.fromISO('2025-01-27'),
+    duration: 2,
+    title: 'Task B (depends on A)',
+    path: 'b5', line: 1, file: 'b5', priority: 2
+  },
+  {
+    id: 'A5',
+    deps: [],
+    deadline: DateTime.fromISO('2025-01-27'),
+    duration: 2,
+    title: 'Task A (root)',
+    path: 'a5', line: 1, file: 'a5', priority: 2
+  }
+];
+const sched5 = computeSchedule(items5, [], today, SCHEDULE);
+const tA5 = sched5.sched.find(s => s.id === 'A5');
+const tB5 = sched5.sched.find(s => s.id === 'B5');
+const tC5 = sched5.sched.find(s => s.id === 'C5');
+console.log(`  A: start=${tA5.startCal.toFixed(2)} | B: start=${tB5.startCal.toFixed(2)} | C: start=${tC5.startCal.toFixed(2)}`);
+const reversedOK = tA5.startCal < tB5.startCal && tB5.startCal < tC5.startCal;
+if (reversedOK) {
+  console.log('  ✓ Chain order A→B→C respected regardless of input order');
+} else {
+  console.log('  ✗ Chain order VIOLATED (fallback path took over)');
+  assert.fail('Reversed chain C,B,A not respected');
+}
+
+// Test 6: EDF must not be discarded for dep-having tasks — a dependent with the
+// earliest deadline must run before an unrelated task with a later deadline.
+// Regressed for the same reason as Test 5 (deps never matched scheduled keys,
+// so every dep-having task used the deadline-blind fallback).
+console.log('\nTest 6: Dependent with earliest deadline beats unrelated later task');
+const items6 = [
+  {
+    id: 'A6',
+    deps: [],
+    deadline: DateTime.fromISO('2025-01-21'), // tomorrow — earliest
+    duration: 2,
+    title: 'Task A (dep root)',
+    path: 'a6', line: 1, file: 'a6', priority: 2
+  },
+  {
+    id: 'B6',
+    deps: ['A6'],
+    deadline: DateTime.fromISO('2025-01-21'), // inherited early deadline
+    duration: 2,
+    title: 'Task B (depends on A)',
+    path: 'b6', line: 1, file: 'b6', priority: 2
+  },
+  {
+    id: null,
+    deps: [],
+    deadline: DateTime.fromISO('2025-01-31'), // much later, no deps
+    duration: 2,
+    title: 'Task D (unrelated, later deadline)',
+    path: 'd6', line: 1, file: 'd6', priority: 2
+  }
+];
+const sched6 = computeSchedule(items6, [], today, SCHEDULE);
+const tA6 = sched6.sched.find(s => s.id === 'A6');
+const tB6 = sched6.sched.find(s => s.id === 'B6');
+const tD6 = sched6.sched.find(s => s.id == null && s.path === 'd6');
+console.log(`  A: start=${tA6.startCal.toFixed(2)} | B: start=${tB6.startCal.toFixed(2)} | D: start=${tD6.startCal.toFixed(2)}`);
+const edfOK = tA6.startCal < tD6.startCal && tB6.startCal < tD6.startCal;
+if (edfOK) {
+  console.log('  ✓ Both chain tasks run before the unrelated later-deadline task');
+} else {
+  console.log('  ✗ Unrelated later-deadline task ran before a dep-having urgent task');
+  assert.fail('EDF order discarded for dep-having tasks');
+}
+
 // Summary
 console.log('\n===================================');
-if (chain1OK && chain2OK && correctOrder) {
+if (chain1OK && chain2OK && correctOrder && reversedOK && edfOK) {
   console.log('All dependency ordering tests passed');
   console.log('Note: some pass by coincidence (duration tie-break) not enforcement');
 }

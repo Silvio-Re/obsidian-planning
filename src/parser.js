@@ -31,6 +31,24 @@ export function collectAll(pages) {
   const warnings = [];
   const completed = [];
 
+  // --- Pass 1: collect every task's ID so dependencies can be validated ---
+  // A dep can reference a task defined anywhere in the vault (any page, any order),
+  // so the known-ID set must be complete before any ⛔ can be checked. Subtasks are
+  // visited explicitly: Dataview lists them flat inside file.tasks, but recursing
+  // keeps the set correct under either shape.
+  const knownIds = new Set();
+  const collectId = (t) => {
+    if (t.status !== '-' && !t.completed) {
+      const idm = t.text.match(idRe);
+      if (idm) knownIds.add(idm[1].replace(/[^a-zA-Z0-9_-]+$/, ''));
+    }
+    for (const c of t.subtasks ?? []) collectId(c);
+  };
+  for (const page of pages) {
+    for (const t of page.file.tasks) collectId(t);
+  }
+
+
   for (const page of pages) {
     const path = page.file.path;
     const file = baseName(path);
@@ -109,6 +127,17 @@ export function collectAll(pages) {
         isIndented,
         _parsingErrors: parsingErrors,
       };
+
+      // Unknown dependency check (pass 2, once all IDs are known): a ⛔ pointing at an
+      // ID that no task carries is a typo or a stale reference — the scheduler can never
+      // satisfy it, so surface it like any other malformed metadata instead of silently
+      // scheduling the task as if it had no constraint. Completed and cancelled tasks
+      // don't count as dependency targets: a dep on finished work is not a scheduling
+      // constraint, and treating it as known would hide a stale reference.
+      const unknownDeps = taskEntry.deps.filter(dep => !knownIds.has(dep));
+      if (unknownDeps.length) {
+        parsingErrors.push(`Unknown dependency: ${unknownDeps.join(', ')}`);
+      }
 
       if (parsingErrors.length) {
         warnings.push({ text: t.text, path, line: t.line, errors: parsingErrors });
@@ -197,6 +226,10 @@ export function collectPlannerData(pages) {
 
   for (const r of all) {
     if (r.locked) {
+      // A meeting whose date failed to parse (mDate null) must not become a lock: the
+      // scheduler and renderers assume lk.day is a valid DateTime and would crash the
+      // whole dashboard. The parsing-error panel already flags the task with the reason.
+      if (!r.mDate) continue;
       const h = chargeableHours(r.node, r.path, markSet);
       if (h > 0) {
         locks.push({

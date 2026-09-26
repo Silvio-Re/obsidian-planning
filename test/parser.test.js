@@ -145,6 +145,120 @@ assert(p1Match !== null, 'Should match P1');
 assert(p1Match[1] === PRIORITY.P1, 'Should capture P1 character');
 console.log('  priorityRe: PASS');
 
+// Test unknown-dependency detection in collectAll
+// collectAll uses the global `dv` only for dv.date(); mock it with native Dates.
+console.log('Testing collectAll unknown-dependency warnings...');
+
+globalThis.dv = { date: (s) => { const d = new Date(s + 'T00:00:00Z'); return isNaN(d.getTime()) ? null : d; } };
+const { collectAll } = await import('../src/parser.js');
+
+const dvTask = (text, line, extra = {}) => ({ text, line, status: ' ', completed: false, subtasks: [], ...extra });
+const ID = ID_MARKER, BLK = BLOCK_MARKER, CAL = CALENDAR, CLK = CLOCK;
+
+// Unknown dep (typo) -> warning listing the unknown id
+{
+  const pages = [{ file: { path: 'Projets/p.md', tasks: [
+    dvTask(`Implement login ${ID} auth-module ${CLK} 3h ${CAL} 2025-01-20`, 1),
+    dvTask(`Write tests ${BLK} auth-moduel ${CLK} 2h ${CAL} 2025-01-21`, 2),
+  ] } }];
+  const { warnings } = collectAll(pages);
+  assert.strictEqual(warnings.length, 1, 'typo dep produces exactly one warning');
+  assert.strictEqual(warnings[0].line, 2, 'warning points at the dependent task');
+  assert(warnings[0].errors.some(e => e.includes('Unknown dependency') && e.includes('auth-moduel')), 'warning names the unknown id');
+}
+
+// Mixed deps: one known, one unknown -> single warning naming only the unknown one
+{
+  const pages = [{ file: { path: 'Projets/p.md', tasks: [
+    dvTask(`Implement login ${ID} auth-module ${CLK} 3h ${CAL} 2025-01-20`, 1),
+    dvTask(`Deploy ${BLK} auth-module, api-gateway ${CLK} 1h ${CAL} 2025-01-22`, 2),
+  ] } }];
+  const { warnings } = collectAll(pages);
+  assert.strictEqual(warnings.length, 1, 'mixed deps produce one warning');
+  assert(warnings[0].errors.some(e => e.includes('api-gateway') && !e.includes('auth-module,')), 'only the unknown dep is named');
+}
+
+// Valid deps: forward reference (dep before target in file order), cross-page, and
+// duplicate-id targets must NOT warn
+{
+  const pages = [
+    { file: { path: 'Projets/a.md', tasks: [
+      dvTask(`Tests ${BLK} impl ${CLK} 2h ${CAL} 2025-01-21`, 1),
+    ] } },
+    { file: { path: 'Projets/b.md', tasks: [
+      dvTask(`Implement ${ID} impl ${CLK} 3h ${CAL} 2025-01-20`, 1),
+      dvTask(`Implement v2 ${ID} impl ${CLK} 1h ${CAL} 2025-01-25`, 2),
+    ] } },
+  ];
+  const { warnings } = collectAll(pages);
+  assert.strictEqual(warnings.length, 0, 'forward/cross-page/duplicate-id deps do not warn');
+}
+
+// Dep on a completed or cancelled task -> warning (stale reference; the scheduler
+// can never satisfy it since finished/cancelled work is not scheduled)
+{
+  const pages = [{ file: { path: 'Projets/p.md', tasks: [
+    { text: `Old design ${ID} design ${CLK} 2h`, line: 1, status: 'x', completed: true, subtasks: [] },
+    dvTask(`Build feature ${BLK} design ${CLK} 3h ${CAL} 2025-01-20`, 2),
+  ] } }];
+  const { warnings } = collectAll(pages);
+  assert.strictEqual(warnings.length, 1, 'dep on completed task warns');
+  assert(warnings[0].errors.some(e => e.includes('Unknown dependency')), 'names it as unknown');
+}
+
+// Dep target defined on a subtask -> known, no warning (file.tasks may be nested)
+{
+  const pages = [{ file: { path: 'Projets/p.md', tasks: [
+    { text: `Parent ${CLK} 4h ${CAL} 2025-01-20`, line: 1, status: ' ', completed: false,
+      subtasks: [dvTask(`Child ${ID} sub-id ${CLK} 1h`, 2)] },
+    dvTask(`Other ${BLK} sub-id ${CLK} 1h ${CAL} 2025-01-21`, 3),
+  ] } }];
+  const { warnings } = collectAll(pages);
+  assert.strictEqual(warnings.length, 0, 'subtask id counts as a known dep target');
+}
+
+// Task with no deps at all -> never warns
+{
+  const pages = [{ file: { path: 'Projets/p.md', tasks: [
+    dvTask(`Plain task ${CLK} 1h ${CAL} 2025-01-20`, 1),
+  ] } }];
+  const { warnings } = collectAll(pages);
+  assert.strictEqual(warnings.length, 0, 'no deps -> no warning');
+}
+
+console.log('  collectAll unknown-dependency warnings: PASS');
+
+// A meeting (locked task) whose date fails to parse must NOT become a lock — the
+// scheduler and renderers assume lk.day is a valid DateTime and would crash the
+// whole dashboard. The parsing-error panel already flags it with the reason.
+console.log('Testing collectPlannerData invalid-meeting-date handling...');
+// collectPlannerData needs Luxon DateTimes from dv.date (as Dataview returns them).
+const { DateTime } = await import('luxon');
+globalThis.dv = { date: (s) => { const d = DateTime.fromISO(s); return d.isValid ? d : null; } };
+const { collectPlannerData } = await import('../src/parser.js');
+{
+  const pages = [{ file: { path: 'Projets/p.md', tasks: [
+    // regex-valid but semantically invalid date (month 13, day 45) -> dv.date returns null
+    dvTask(`Bad meeting ${CAL} 2025-13-45 14:00 ${CLK} 1h`, 1),
+    dvTask(`Good task ${CLK} 2h ${CAL} 2025-01-20`, 2),
+    dvTask(`Good meeting ${CAL} 2025-01-15 14:00 ${CLK} 1h`, 3),
+  ] } }];
+  const { items, locks, warnings } = collectPlannerData(pages);
+  assert.strictEqual(locks.length, 1, 'only the well-dated meeting becomes a lock');
+  assert.strictEqual(locks[0].title, 'Good meeting', 'bad-date meeting is excluded from locks');
+  assert.strictEqual(items.length, 1, 'regular task unaffected');
+  assert(warnings.some(w => w.line === 1 && w.errors.some(e => e.includes('Date parse failed'))),
+    'bad-date meeting is flagged in the parsing warnings');
+  // the produced locks must be schedulable without crashing (this used to throw
+  // TypeError: Cannot read properties of null)
+  const { computeSchedule } = await import('../src/scheduler.js');
+  const today = DateTime.fromISO('2025-01-06');
+  const s = computeSchedule(items, locks, today, { startHour: 9, hoursPerDay: 8 });
+  assert.strictEqual(s.sched.length, 1, 'schedule computes fine with the filtered locks');
+  assert.strictEqual(s.meetData.length, 1, 'one meeting on the schedule');
+}
+console.log('  collectPlannerData invalid-meeting-date: PASS');
+
 console.log('\nAll parser tests passed!');
 process.exit(0);
 

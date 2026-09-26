@@ -24,11 +24,22 @@ function clip(s, k) {
 
 // Task opener utility - creates a function to open tasks in Obsidian
 function makeTaskOpener(app) {
-  function selectLine(path, line, tries) {
-    const target = app.workspace.getLeavesOfType('markdown').find(l => 
-      l.view && l.view.file && l.view.file.path === path
+  // Select a task line in an open markdown view. `leafHint` is the leaf returned by the
+  // synchronous part of openFile(): when the file is opened in a NEW tab the workspace's
+  // leaf list only exposes it after the view loads, so searching leaves alone races the
+  // load and gives up after the retries. Preferring the hint first, then falling back to
+  // the workspace search, makes the line selection work for left and middle click alike.
+  function selectLine(path, line, tries, leafHint) {
+    // Prefer an already-open leaf (avoids hijacking a duplicate new tab), then fall back
+    // to the opened leaf as hint — when the file opens in a NEW tab the workspace's leaf
+    // list only exposes it after the view loads, so the hint is the only reliable handle.
+    const candidates = [];
+    for (const l of app.workspace.getLeavesOfType('markdown')) candidates.push(l);
+    if (leafHint) candidates.push(leafHint);
+    const target = candidates.find(l =>
+      l && l.view && l.view.file && l.view.file.path === path && l.view.editor
     );
-    if (target && target.view.editor) {
+    if (target) {
       app.workspace.setActiveLeaf(target, { focus: true });
       const ed = target.view.editor;
       const len = (ed.getLine(line) || '').length;
@@ -38,28 +49,28 @@ function makeTaskOpener(app) {
     }
     else if (tries > 0) setTimeout(() => selectLine(path, line, tries - 1), 50);
   }
+  function openAt(el) {
+    const p = el.getAttribute('data-path');
+    const l = parseInt(el.getAttribute('data-line'), 10);
+    // getLeaf('tab') returns a leaf whose view is replaced asynchronously; openFile
+    // resolves with the same leaf, so pass it through as the selection hint.
+    const leaf = app.workspace.getLeaf('tab');
+    leaf.openFile(app.vault.getAbstractFileByPath(p), {
+      active: true,
+      state: { line: l }
+    });
+    selectLine(p, l, 12, leaf);
+  }
   return (el) => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
-      const p = el.getAttribute('data-path');
-      const l = parseInt(el.getAttribute('data-line'), 10);
-      app.workspace.getLeaf('tab').openFile(app.vault.getAbstractFileByPath(p), { 
-        active: true, 
-        state: { line: l } 
-      });
-      selectLine(p, l, 12);
+      openAt(el);
     });
     el.addEventListener('auxclick', (e) => {
       if (e.button === 1) {
-        const p = el.getAttribute('data-path');
-        const l = parseInt(el.getAttribute('data-line'), 10);
         e.preventDefault();
         e.stopPropagation();
-        app.workspace.getLeaf('tab').openFile(app.vault.getAbstractFileByPath(p), { 
-          active: true, 
-          state: { line: l } 
-        });
-        selectLine(p, l, 12);
+        openAt(el);
       }
     });
   };
