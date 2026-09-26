@@ -249,6 +249,70 @@ async function main() {
     console.log('    PASS');
   }
 
+
+  // --- 9. Today agenda panel: today's tasks/meetings first, empty state otherwise ---
+  console.log('Test 9: Today agenda panel renders today\u2019s rows before other sections');
+  {
+    const walk = (el, cb) => { cb(el); (el._children || []).forEach(c => walk(c, cb)); };
+    const findAgenda = (root) => {
+      let found = null;
+      walk(root, (el) => {
+        if (!found && typeof el.innerHTML === 'string' &&
+            (el.innerHTML.includes('arow prow') || el.innerHTML.includes('Nothing scheduled today'))) {
+          found = el.innerHTML;
+        }
+      });
+      return found;
+    };
+    const headerIdx = (root, text) => root._children.findIndex(c => c.text === text);
+
+    // 9a. The dependency task lands on today (its prereq meeting is today too)
+    const root = runBundle(lateMeetPages, { today });
+    const agenda = findAgenda(root);
+    assert.ok(agenda, 'agenda panel rendered');
+    assert.ok(agenda.includes('arow prow'), 'agenda has at least one row');
+    assert.ok(agenda.includes('Pr\u00e9parer la r\u00e9union'), 'today task listed');
+    assert.ok(agenda.includes('HH:') === false, 'no literal template leftovers');
+    assert.ok(headerIdx(root, 'Today') > -1, 'Today header present');
+    assert.ok(headerIdx(root, 'Today') < headerIdx(root, 'Capacity Chart'),
+      'Today panel comes before the Capacity Chart');
+
+    // 9b. Nothing scheduled today (today is a weekend day, work resumes Monday)
+    // -> explicit empty state
+    const laterPages = [
+      { file: { path: 'Projets/Next.md', tasks: [
+        { line: 1, completed: false, status: ' ', text: 'Task W \u{1F194} tw \u{1F4C5} 2026-09-22 \u23f1 2h' },
+      ] } },
+    ];
+    const root2 = runBundle(laterPages, { today: '2026-09-19' }); // Saturday
+    const agenda2 = findAgenda(root2);
+    assert.ok(agenda2 && agenda2.includes('Nothing scheduled today'),
+      'agenda shows the empty state when no work lands on today');
+    console.log('    PASS');
+  }
+
+  // --- 10. Gantt group labels carry the subtree's finish date ---
+  console.log('Test 10: Gantt groups show per-project finish dates');
+  {
+    const pages = [
+      { file: { path: 'Projets/Alpha/Website.md', tasks: [
+        { line: 1, completed: false, status: ' ', text: 'Design \u{1F194} d1 \u{1F4C5} 2026-09-18 \u23f1 8h' },
+        { line: 2, completed: false, status: ' ', text: 'Build \u{1F194} b1 \u26d4 d1 \u{1F4C5} 2026-09-25 \u23f1 16h' },
+      ] } },
+      { file: { path: 'Projets/Beta/Report.md', tasks: [
+        { line: 1, completed: false, status: ' ', text: 'Write \u{1F194} w1 \u{1F4C5} 2026-09-24 \u23f1 8h' },
+      ] } },
+    ];
+    const root = runBundle(pages, { today: '2026-09-15' }); // Tuesday
+    const svg = findGanttSVG(root);
+    assert.ok(svg, 'Gantt SVG rendered');
+    const labels = svg.match(/\([\d.]+h → [^)]*\)/g) || [];
+    assert.ok(labels.some(l => l.includes('24h') && l.includes('18 Sep')),
+      'Alpha group finishes Friday 18 Sep, got: ' + labels.join(' '));
+    assert.ok(labels.some(l => l.includes('8h') && l.includes('16 Sep')),
+      'Beta group finishes Wednesday 16 Sep, got: ' + labels.join(' '));
+    console.log('    PASS');
+  }
   console.log('\nAll end-to-end render tests passed!');
 }
 

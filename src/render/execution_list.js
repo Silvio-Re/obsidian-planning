@@ -2,7 +2,7 @@
 // This file uses dv and app - not testable outside Obsidian
 
 import { fmtHours } from '../constants.js';
-import { esc, escA, renderMd, makeTaskOpener, openTask } from '../utils.js';
+import { esc, escA, renderMd, makeTaskOpener, openTask, wireDoneButtons } from '../utils.js';
 
 /**
  * Render execution list
@@ -40,9 +40,10 @@ export function renderExecutionList(container, seq, calToDT) {
       lines.push(`<div style="background:rgba(97,175,239,0.08);padding:3px 8px;font-weight:600;color:rgb(97,175,239);font-size:12px;border-bottom:1px solid rgba(128,128,128,0.2);">${esc(dateStr)}</div>`);
     }
 
-    lines.push(`<div class="prow" data-path="${escA(e.path)}" data-line="${e.line}" style="cursor:pointer;padding:3px 6px;border-bottom:1px solid rgba(128,128,128,0.15);${lateStyle}"><span style="color:${col};font-weight:bold;float:left;width:24px;text-align:right;margin-right:8px;">${i + 1}.</span><div style="overflow:hidden;"><div style="margin-bottom:1px;">${renderMd(e.title)} <b>(${fmtHours(e.hours)}h)</b></div><div style="color:gray;font-size:11px;">${esc(e.file)} \u00b7 ${dueTxt}${e.late ? ' \u00b7 <b>LATE</b>' : ''}</div></div></div>`);
+    lines.push(`<div class="prow" data-path="${escA(e.path)}" data-line="${e.line}" style="cursor:pointer;display:flex;gap:8px;align-items:baseline;padding:3px 6px;border-bottom:1px solid rgba(128,128,128,0.15);${lateStyle}"><span style="color:${col};font-weight:bold;float:left;width:24px;text-align:right;margin-right:8px;">${i + 1}.</span><div style="flex:1;overflow:hidden;"><div style="margin-bottom:1px;">${renderMd(e.title)} <b>(${fmtHours(e.hours)}h)</b></div><div style="color:gray;font-size:11px;">${esc(e.file)} \u00b7 ${dueTxt}${e.late ? ' \u00b7 <b>LATE</b>' : ''}</div></div><span class="done-btn" data-path="${escA(e.path)}" data-line="${e.line}" title="Mark as done for today" style="align-self:center;color:gray;cursor:pointer;padding:0 6px;user-select:none;">\u2713</span></div>`);
   });
 
   planDiv.innerHTML = lines.join('');
   planDiv.querySelectorAll('.prow').forEach(el => openTask(el));
+  wireDoneButtons(planDiv);
 }

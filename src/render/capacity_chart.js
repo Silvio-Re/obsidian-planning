@@ -97,6 +97,9 @@ export function renderCapacity(container, capacityData, SCHEDULE) {
       if (dt.weekday > 5 && d < totalDays) {
         weeks += `<rect x="${x}" y="${m.t}" width="${pxPerDay}" height="${ih}" fill="rgba(128,128,128,0.1)" pointer-events="none"/>`;
       }
+      if (dt.weekday <= 5 && (SCHEDULE.nonWorkingDays || new Set()).has(dt.toFormat('yyyy-MM-dd')) && d < totalDays) {
+        weeks += `<rect x="${x}" y="${m.t}" width="${pxPerDay}" height="${ih}" fill="rgba(198,120,221,0.10)" pointer-events="none"/>`;
+      }
     }
 
     const step = Math.max(1, Math.round(totalDays / Math.max(1, Math.floor(iw / 90))));

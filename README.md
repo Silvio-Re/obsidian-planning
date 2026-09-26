@@ -5,7 +5,8 @@ visual schedule with capacity analysis, a Gantt chart, and an execution-order li
 
 ## Setup
 
-1. Create a folder named `Projets` in your vault (or update the query in `index.js`).
+1. Create a folder named `Projets` in your vault (or edit `USER_CONFIG.folders` at the top
+   of the `planning.md` block — a single folder name or an array of names).
 2. Add task notes inside that folder.
 3. Place the contents of `planning.md` into a note where you want the dashboard to appear.
 
@@ -64,21 +65,32 @@ an earlier deadline, it becomes the effective deadline for its dependency.
 
 The planner uses **Earliest Deadline First (EDF)**:
 
-- **Work hours**: 9:00–17:00 weekdays, 8h/day (configurable in `SCHEDULE_CONFIG`)
+- **Work hours**: 9:00–17:00 weekdays, 8h/day (configurable in `USER_CONFIG`)
 - **Single resource**: only one task runs at a time
 - **Meetings are fixed**: locked tasks occupy hard blocks
+- **Non-working days**: holidays and vacation days listed in `USER_CONFIG.nonWorkingDays`
+  (single dates `2026-12-25` or inclusive ranges `2026-07-20/2026-08-07`) carry zero
+  capacity — work flows around them exactly like weekends, and they are shaded
+  (purple) in the Gantt and capacity charts
 - **Priority correction**: if a high-priority task would be late, it is locked to an earlier slot
   and the schedule is recomputed
 
 ## Output Dashboard
 
-1. **Capacity Chart** — cumulative hours owed vs. weekday capacity. Red bars = inherited deadlines;
-   click a column to see which tasks must be cleared.
-2. **Gantt Chart** — visual schedule grouped by file/folder, collapsible groups, dependency arrows,
-   late tasks color-coded.
-3. **Execution List** — ordered, what-to-do-next with times. Click any row to open the source task.
-4. **Ignored Tasks** — undone tasks with no effective deadline (review, correct, or delete).
-5. **Completed Tasks** — finished (`- [x]`) tasks as a foldable tree by project/subproject, with a
+1. **Today** — the day's agenda: every task segment and meeting that lands on today, with
+   clock times. Click a row to open the task; click the ✓ on the right to mark it done
+   (appends `✅ YYYY-MM-DD` to the task line — refresh to see the plan update).
+2. **Capacity Chart** — cumulative hours owed vs. weekday capacity. Red bars = inherited deadlines;
+   click a column to see which tasks must be cleared. Non-working days are shaded purple.
+3. **Gantt Chart** — visual schedule grouped by file/folder, collapsible groups, dependency arrows,
+   late tasks color-coded. Group labels carry the subtree's total and its scheduled finish
+   date (`(24h → 18 Sep)`).
+4. **Execution List** — ordered, what-to-do-next with times. Click any row to open the source task;
+   click its ✓ to complete it.
+5. **At Risk** — on-time tasks with less than a quarter working day of slack before their deadline.
+   Not late yet, but one surprise away from it — the place to look before committing to new work.
+6. **Ignored Tasks** — undone tasks with no effective deadline (review, correct, or delete).
+7. **Completed Tasks** — finished (`- [x]`) tasks as a foldable tree by project/subproject, with a
    From/To date-range filter (defaults to the current month). Copy the same block into a dated daily
    note (`YYYY-MM-DD`) to see only the tasks completed that day.
 
@@ -99,16 +111,21 @@ The planner uses **Earliest Deadline First (EDF)**:
 
 ```
 src/
+  config.js             — USER_CONFIG: folders, hours, non-working days (pure, user-facing)
   constants.js          — Emoji constants, regex patterns, parsing helpers
-  utils.js              — HTML escaping, markdown rendering, openTask
+  utils.js              — HTML escaping, markdown rendering, openTask, click-to-complete
   parser.js             — Collect tasks from Obsidian pages, build dependency graph
   scheduler.js          — EDF scheduling with priority correction
   capacity.js           — Hours owed vs. available
   execution_sequence.js — Build the execution-order list
+  agenda.js            — Select today's agenda rows from the execution sequence
+  risk.js              — Per-task slack and the at-risk set (pure)
   render/
     capacity_chart.js   — SVG capacity chart with zoom/pan
     gantt.js            — SVG Gantt chart with collapsible tree
+    agenda.js           — Today panel (the day's tasks and meetings with times)
     execution_list.js   — Ordered execution plan
+    risk.js             — At-risk panel (thin-slack tasks)
     ignored.js          — Undeclared tasks
     parsing_errors.js   — Malformed metadata
     completed.js        — Foldable project tree of finished tasks (single source of truth)
@@ -120,7 +137,7 @@ test/                   — Parsing, scheduling, capacity, dependency, build, an
 scripts/
   build.js              — Bundles src/**/*.js into planning.md
   validate.mjs          — node --check on every src file + the bundled planning.md and daily.md bodies
-  test-runner.js        — Runs all tests
+  test-runner.js        — Runs all tests (auto-discovers every test/*.test.js|.mjs)
   release.mjs           — Gated, idempotent, atomic release CLI (see "Release" below)
 ```
 

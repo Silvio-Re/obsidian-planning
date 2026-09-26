@@ -9,34 +9,17 @@ import { spawnSync } from 'child_process';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.join(__dirname, '..');
 
-// Test files to run
-const TEST_FILES = [
-  'test/parser.test.js',
-  'test/completed.test.js',
-  'test/completed_filter.test.js',
-  'test/duration_parser.test.js',
-  'test/scheduler.test.js',
-  'test/scheduler_advanced.test.js',
-  'test/graph.test.js',
-  'test/graph_realistic.test.js',
-  'test/dependency_order.test.js',
-  'test/chargeable_hours.test.js',
-  'test/chargeable_hours_extended.test.js',
-  'test/utils.test.js',
-  'test/constants_extended.test.js',
-  'test/capacity.test.js',
-  'test/capacity_deadlines_realistic.test.js',
-  'test/ignored.test.js',
-  'test/build.test.js',
-  'test/rendering.test.js',
-  'test/parsing_errors.test.js',
-  'test/real_data_edge_cases.test.js',
-  'test/late_meeting_deps.test.js',
-  'test/execution_sequence.test.js',
-  'test/render_bundle.test.js',
-  'test/daily_notes.test.mjs',
-  'test/task_opener.test.js',
-];
+// Test files are DISCOVERED, not hand-registered: every test/*.test.js and
+// test/*.test.mjs runs automatically. A forgotten registry entry was a real
+// failure mode (new tests silently never ran), and tests are independent
+// node processes, so the hand-curated order bought nothing.
+// Helpers live in test/harness/ and artifacts in test/output/ — neither
+// matches the *.test.* pattern, so nothing else needs excluding.
+const testDir = path.join(PROJECT_ROOT, 'test');
+const TEST_FILES = fs.readdirSync(testDir)
+  .filter(f => f.endsWith('.test.js') || f.endsWith('.test.mjs'))
+  .sort()
+  .map(f => `test/${f}`);
 
 console.log('Running tests...\n');
 

@@ -58,6 +58,13 @@ export function renderGantt(container, scheduleData) {
     node.children.forEach(c => mn = Math.min(mn, nodeStart(c)));
     return mn === Infinity ? 0 : mn;
   }
+  // Latest finish (cal) over a group's subtree: tasks end at endCal, meetings at calE.
+  function nodeEnd(node) {
+    let mx = -Infinity;
+    node.items.forEach(e => mx = Math.max(mx, e.k === 'task' ? e.s.endCal : e.l.calE));
+    node.children.forEach(c => mx = Math.max(mx, nodeEnd(c)));
+    return mx === -Infinity ? 0 : mx;
+  }
   function collectEntries(node, out) {
     node.items.forEach(e => out.push(e));
     node.children.forEach(c => collectEntries(c, out));
@@ -127,6 +134,8 @@ export function renderGantt(container, scheduleData) {
         grid += `<line x1="${x}" y1="${gm.top}" x2="${x}" y2="${H - 16}" stroke="rgba(128,128,128,0.15)"/>`;
       } else if (dt.weekday > 5) {
         grid += `<rect x="${x}" y="${gm.top}" width="${pxG}" height="${H - 16 - gm.top}" fill="rgba(128,128,128,0.07)"/>`;
+      } else if ((scheduleData.SCHEDULE.nonWorkingDays || new Set()).has(dt.toFormat('yyyy-MM-dd'))) {
+        grid += `<rect x="${x}" y="${gm.top}" width="${pxG}" height="${H - 16 - gm.top}" fill="rgba(198,120,221,0.10)"/>`;
       }
     }
     const step = Math.max(1, Math.round(gDays / Math.max(1, Math.floor((gDays * pxG) / 90))));
@@ -181,7 +190,10 @@ export function renderGantt(container, scheduleData) {
         const icon = isLeaf ? '\u{1F4C4}' : '\u{1F4C1}';
         const col = isLeaf ? 'rgb(152,195,121)' : 'rgb(97,175,239)';
         const bg = isLeaf ? 'rgba(152,195,121,0.10)' : 'rgba(97,175,239,0.10)';
-        rows += `<rect x="0" y="${y}" width="${W}" height="${rh}" fill="${bg}"/> <text x="${ind}" y="${y + rh / 2 + 4}" font-size="12" fill="${col}" pointer-events="none">${tri} ${icon} ${esc(clip(c.label, Math.max(8, 34 - r.depth * 3)))} <tspan fill="gray">(${fmtHours(c.total)}h)</tspan></text>`;
+        // -\u03b5: a segment ending exactly at a day boundary (endCal 4.0 = end of Friday)
+        // belongs to that working day, not to the midnight that follows it.
+        const finish = calToDT(nodeEnd(c) - 1e-6).toFormat('dd LLL');
+        rows += `<rect x="0" y="${y}" width="${W}" height="${rh}" fill="${bg}"/> <text x="${ind}" y="${y + rh / 2 + 4}" font-size="12" fill="${col}" pointer-events="none">${tri} ${icon} ${esc(clip(c.label, Math.max(8, 34 - r.depth * 3)))} <tspan fill="gray">(${fmtHours(c.total)}h \u2192 ${finish})</tspan></text>`;
         if (isColl) {
           collectEntries(c, []).forEach(en => {
             if (en.k === 'task') rows += taskBars(en.s, y + 5, ri);

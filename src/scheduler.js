@@ -228,11 +228,14 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
 
   const totalWH = items.reduce((s, it) => s + it.duration, 0) + locks.reduce((s, l) => s + l.hours, 0);
   const needWD = Math.ceil(totalWH / (SCHEDULE.hoursPerDay / 2)) + 6;
+  // Non-working days (holidays, vacation) carry zero capacity: the scheduler skips
+  // them exactly like weekends, so work flows around them.
+  const nonWorking = SCHEDULE.nonWorkingDays || new Set();
   const workDays = [];
   let d = sStart;
   let guard = 0;
   while (workDays.length < needWD && guard++ < 9000) {
-    if (d.weekday <= 5) workDays.push(d);
+    if (d.weekday <= 5 && !nonWorking.has(d.toFormat('yyyy-MM-dd'))) workDays.push(d);
     d = d.plus({ days: 1 });
   }
 
@@ -351,5 +354,5 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
     });
   }
 
-  return { sched, meetData: locks, today, SCHEDULE, calToDT, idToAll, workDays };
+  return { sched, meetData: locks, today, SCHEDULE, calToDT, idToAll, workDays, meetIv };
 }

@@ -21,11 +21,16 @@ const VERSION = pkg.version || '0.0.0';
 const ARTIFACTS = {
   'planning.md': {
     files: [
+      'src/config.js',
       'src/constants.js',
       'src/utils.js',
       'src/parser.js',
       'src/scheduler.js',
       'src/capacity.js',
+      'src/agenda.js',
+      'src/render/agenda.js',
+      'src/risk.js',
+      'src/render/risk.js',
       'src/render/capacity_chart.js',
       'src/render/gantt.js',
       'src/render/execution_list.js',
@@ -38,6 +43,7 @@ const ARTIFACTS = {
   },
   'daily.md': {
     files: [
+      'src/config.js',
       'src/constants.js',
       'src/utils.js',
       'src/parser.js',

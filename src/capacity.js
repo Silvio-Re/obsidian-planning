@@ -37,9 +37,10 @@ export function computeCapacity(items, locks, today, SCHEDULE) {
 
   // Calculate cumulative capacity hours
   capHours[t0] = 0;
+  const nonWorking = SCHEDULE.nonWorkingDays || new Set();
   for (let i = t0 + 1; i <= totalDays; i++) {
     const dk = dateArr[i].toFormat('yyyy-MM-dd');
-    capHours[i] = capHours[i - 1] + (dateArr[i].weekday <= 5 ? Math.max(0, SCHEDULE.hoursPerDay - (meetH[dk] || 0)) : 0);
+    capHours[i] = capHours[i - 1] + (dateArr[i].weekday <= 5 && !nonWorking.has(dk) ? Math.max(0, SCHEDULE.hoursPerDay - (meetH[dk] || 0)) : 0);
   }
   for (let i = t0 - 1; i >= 0; i--) capHours[i] = 0;
 

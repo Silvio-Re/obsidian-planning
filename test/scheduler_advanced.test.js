@@ -221,5 +221,32 @@ console.log('  Testing priority correction vs dependencies...');
 }
 console.log('  priority correction vs dependencies: PASS');
 
+// --- non-working days: a holiday weekday carries zero capacity ---
+console.log('  Testing non-working days...');
+{
+  const { computeSchedule } = await import('../src/scheduler.js');
+  const t0 = DateTime.fromISO('2026-09-14'); // Monday
+  const S = { startHour: 9, hoursPerDay: 8, nonWorkingDays: new Set(['2026-09-16']) }; // Wednesday holiday
+  const mk = (id) => ({ duration: 8, deadline: t0.plus({ days: 4 }), title: id.toUpperCase(), path: id, line: 1, file: id, id, deps: [], priority: 2 });
+  const out = computeSchedule([mk('a'), mk('b'), mk('c')], [], t0, S);
+  // 24h of work: Mon + Tue are working (16h), Wednesday is a holiday, so C lands Thursday.
+  const cSched = out.sched.find(t => t.id === 'c');
+  assert.strictEqual(Math.floor(cSched.startCal), 3, 'holiday Wednesday skipped \u2014 C starts Thursday (cal day 3)');
+  const dayKeys = out.workDays.map(d => d.toFormat('yyyy-MM-dd'));
+  assert.ok(!dayKeys.includes('2026-09-16'), 'holiday not in workDays');
+  assert.ok(dayKeys.includes('2026-09-17'), 'Thursday follows');
+  console.log('    holiday skipped in schedule: PASS');
+}
+// And without the set, B lands on Wednesday (control):
+{
+  const { computeSchedule } = await import('../src/scheduler.js');
+  const t0 = DateTime.fromISO('2026-09-14');
+  const S = { startHour: 9, hoursPerDay: 8 };
+  const mk = (id) => ({ duration: 8, deadline: t0.plus({ days: 4 }), title: id.toUpperCase(), path: id, line: 1, file: id, id, deps: [], priority: 2 });
+  const out = computeSchedule([mk('a'), mk('b'), mk('c')], [], t0, S);
+  assert.strictEqual(Math.floor(out.sched.find(t => t.id === 'c').startCal), 2, 'control: C lands on Wednesday');
+  console.log('    control (no holiday) lands Wednesday: PASS');
+}
+
 console.log('\nAll scheduler advanced tests passed!');
 process.exit(0);
