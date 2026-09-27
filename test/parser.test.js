@@ -259,6 +259,26 @@ const { collectPlannerData } = await import('../src/parser.js');
 }
 console.log('  collectPlannerData invalid-meeting-date: PASS');
 
+// A meeting with an out-of-range hour (dateRe matches any 1-2 digits, so 99:00 parses)
+// must NOT become a lock: scheduling it would draw the Gantt bar outside its day box
+// and print a nonsense agenda time. The parsing-error panel flags it with the reason.
+console.log('Testing collectPlannerData invalid-meeting-time handling...');
+{
+  const pages = [{ file: { path: 'Projets/p.md', tasks: [
+    dvTask(`Bad hour meeting ${CAL} 2025-01-15 99:00 ${CLK} 1h`, 1),
+    dvTask(`Bad minute meeting ${CAL} 2025-01-15 14:75 ${CLK} 1h`, 2),
+    dvTask(`Good task ${CLK} 2h ${CAL} 2025-01-20`, 3),
+  ] } }];
+  const { items, locks, warnings } = collectPlannerData(pages);
+  assert.strictEqual(locks.length, 0, 'invalid-time meetings never become locks');
+  assert.strictEqual(items.length, 1, 'regular task unaffected');
+  assert(warnings.some(w => w.line === 1 && w.errors.some(e => e.includes('Hour invalid'))),
+    'bad hour flagged in the parsing warnings');
+  assert(warnings.some(w => w.line === 2 && w.errors.some(e => e.includes('Minute invalid'))),
+    'bad minute flagged in the parsing warnings');
+}
+console.log('  collectPlannerData invalid-meeting-time: PASS');
+
 console.log('\nAll parser tests passed!');
 process.exit(0);
 

@@ -227,7 +227,14 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
   while (sStart.weekday > 5) sStart = sStart.plus({ days: 1 });
 
   const totalWH = items.reduce((s, it) => s + it.duration, 0) + locks.reduce((s, l) => s + l.hours, 0);
-  const needWD = Math.ceil(totalWH / (SCHEDULE.hoursPerDay / 2)) + 6;
+  // Work-day horizon must cover BOTH the workload AND the farthest deadline: slack
+  // (src/risk.js) only sees workDays, so a deadline beyond a workload-sized horizon
+  // would silently truncate the capacity window and understate slack.
+  const maxDLDay = Math.max(0, ...items.map(it => it.deadline.diff(today, 'days').days));
+  const needWD = Math.max(
+    Math.ceil(totalWH / (SCHEDULE.hoursPerDay / 2)) + 6,
+    Math.ceil(maxDLDay) + 1
+  );
   // Non-working days (holidays, vacation) carry zero capacity: the scheduler skips
   // them exactly like weekends, so work flows around them.
   const nonWorking = SCHEDULE.nonWorkingDays || new Set();

@@ -107,4 +107,34 @@ function meetAt(result, id) { return result.meetData.find(m => m.id === id); }
   console.log('  6. straddling meeting still locks only its in-hours portion: PASS');
 }
 
+// 7. TRUE-CLOCK-ORDER SORT. The display clamp maps both a pre-hours meeting (08:00)
+//    and a day-start task (09:00) to startCal 0, but the execution list and agenda
+//    print real clock times, so the meeting must still come FIRST.
+{
+  const items = [task('a', 2, 1)]; // 2h task, starts 09:00 on the meeting's day
+  const sched = computeSchedule(items, [meet('P', 8, 0, 1)], today, SCHEDULE);
+  const seq = buildExecutionSequence(sched.sched, sched.meetData, today);
+  assert.strictEqual(seq.length, 2, 'one meeting + one task');
+  assert.strictEqual(seq[0].kind, 'meet', 'pre-hours meeting sorts before the 09:00 task');
+  assert.strictEqual(seq[0].meetTrueTime, '08:00', 'meeting keeps its true time');
+  assert.ok(Math.floor(seq[0].startCal) === Math.floor(seq[1].startCal), 'both still group on the same day');
+  console.log('  7. pre-hours meeting (08:00) sorts before a 09:00 task: PASS');
+}
+
+// 8. Post-hours meeting stays LAST on its requested day — the true-position sort
+//    must not push it into the next day's group (day key is the clamped display day).
+{
+  const items = [task('a', 8, 1), task('b', 2, 2)];
+  const sched = computeSchedule(items, [meet('N', 23, 30, 0.5)], today, SCHEDULE);
+  const seq = buildExecutionSequence(sched.sched, sched.meetData, today);
+  const meetIdx = seq.findIndex(e => e.kind === 'meet');
+  const meetRow = seq[meetIdx];
+  assert.ok(Math.floor(meetRow.startCal) === 0, 'post-hours meeting groups on its requested day');
+  const dayZeroRows = seq.filter(e => Math.floor(e.startCal) === 0);
+  assert.strictEqual(seq.indexOf(meetRow), seq.lastIndexOf(dayZeroRows[dayZeroRows.length - 1]), 'post-hours meeting is the last row of its day');
+  const firstNextDay = seq.find(e => Math.floor(e.startCal) === 1);
+  assert.ok(firstNextDay && firstNextDay.kind === 'task', 'next-day tasks still come after it');
+  console.log('  8. post-hours meeting stays last on its day, not rolled to the next: PASS');
+}
+
 console.log('\nAll out-of-working-hours meeting tests passed!');

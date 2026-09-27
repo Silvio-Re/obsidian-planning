@@ -658,8 +658,12 @@ function collectPlannerData(pages) {
     if (r.locked) {
       // A meeting whose date failed to parse (mDate null) must not become a lock: the
       // scheduler and renderers assume lk.day is a valid DateTime and would crash the
-      // whole dashboard. The parsing-error panel already flags the task with the reason.
+      // whole dashboard. Same for an out-of-range hour/minute (e.g. 99:00): dateRe
+      // matches any 1-2 digit hour, and scheduling a bogus time would draw the Gantt
+      // bar outside its day box and print a nonsense agenda time. The parsing-error
+      // panel already flags the task with the reason.
       if (!r.mDate) continue;
+      if (r._parsingErrors.length) continue;
       const h = chargeableHours(r.node, r.path, markSet);
       if (h > 0) {
         locks.push({

@@ -22,8 +22,8 @@ export function renderAgenda(container, agendaRows, calToDT) {
     const time = e.kind === 'meet' && e.meetTrueTime != null ? e.meetTrueTime : calToDT(e.startCal).toFormat('HH:mm');
     const isMeet = e.kind === 'meet';
     const icon = isMeet ? '\u{1F4CC}' : '\u25b8';
-    // Late meetings keep their purple identity (they are locked calendar events)
-    // but gain the red contour + LATE tag, matching the Gantt's late-meeting look.
+    // Late meetings turn full red (not purple) with a LATE tag — the same identity
+    // as the Gantt's late-meeting bar and label, so the two panels read the same.
     const col = isMeet
       ? (e.late ? 'rgb(224,108,117)' : 'rgb(198,120,221)')
       : (e.late ? (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)') : 'rgb(97,175,239)');

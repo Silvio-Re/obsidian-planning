@@ -658,8 +658,12 @@ function collectPlannerData(pages) {
     if (r.locked) {
       // A meeting whose date failed to parse (mDate null) must not become a lock: the
       // scheduler and renderers assume lk.day is a valid DateTime and would crash the
-      // whole dashboard. The parsing-error panel already flags the task with the reason.
+      // whole dashboard. Same for an out-of-range hour/minute (e.g. 99:00): dateRe
+      // matches any 1-2 digit hour, and scheduling a bogus time would draw the Gantt
+      // bar outside its day box and print a nonsense agenda time. The parsing-error
+      // panel already flags the task with the reason.
       if (!r.mDate) continue;
+      if (r._parsingErrors.length) continue;
       const h = chargeableHours(r.node, r.path, markSet);
       if (h > 0) {
         locks.push({
@@ -931,7 +935,14 @@ function computeSchedule(items, locks, today, SCHEDULE) {
   while (sStart.weekday > 5) sStart = sStart.plus({ days: 1 });
 
   const totalWH = items.reduce((s, it) => s + it.duration, 0) + locks.reduce((s, l) => s + l.hours, 0);
-  const needWD = Math.ceil(totalWH / (SCHEDULE.hoursPerDay / 2)) + 6;
+  // Work-day horizon must cover BOTH the workload AND the farthest deadline: slack
+  // (src/risk.js) only sees workDays, so a deadline beyond a workload-sized horizon
+  // would silently truncate the capacity window and understate slack.
+  const maxDLDay = Math.max(0, ...items.map(it => it.deadline.diff(today, 'days').days));
+  const needWD = Math.max(
+    Math.ceil(totalWH / (SCHEDULE.hoursPerDay / 2)) + 6,
+    Math.ceil(maxDLDay) + 1
+  );
   // Non-working days (holidays, vacation) carry zero capacity: the scheduler skips
   // them exactly like weekends, so work flows around them.
   const nonWorking = SCHEDULE.nonWorkingDays || new Set();
@@ -1200,8 +1211,8 @@ function renderAgenda(container, agendaRows, calToDT) {
     const time = e.kind === 'meet' && e.meetTrueTime != null ? e.meetTrueTime : calToDT(e.startCal).toFormat('HH:mm');
     const isMeet = e.kind === 'meet';
     const icon = isMeet ? '\u{1F4CC}' : '\u25b8';
-    // Late meetings keep their purple identity (they are locked calendar events)
-    // but gain the red contour + LATE tag, matching the Gantt's late-meeting look.
+    // Late meetings turn full red (not purple) with a LATE tag — the same identity
+    // as the Gantt's late-meeting bar and label, so the two panels read the same.
     const col = isMeet
       ? (e.late ? 'rgb(224,108,117)' : 'rgb(198,120,221)')
       : (e.late ? (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)') : 'rgb(97,175,239)');
@@ -2209,12 +2220,19 @@ function taskRow(s) {
 // Meeting row. A meeting past working hours must stay on its requested calendar date
 // (it must NOT roll to the next day): clamp its display start into its own working day
 // so it groups under `meetDateStr`, and carry the requested date for the date header.
+// Sort keys: `sortDay` is the clamped day (grouping stays on the requested date),
+// `sortFrac` is the TRUE intra-day position — negative for a pre-hours meeting
+// (08:00 < 09:00 day start), above 1 for a post-hours one — so a pre-hours meeting
+// sorts before a 09:00 task even though both clamp to startCal 0, while a post-hours
+// meeting stays after the day's last task without rolling into the next day.
 function meetRow(l, today) {
   const dayIdx = l.day.diff(today, 'days').days;
   const dispStart = Math.max(dayIdx, Math.min(l.calS, dayIdx + 1 - 1e-9));
   return {
     kind: 'meet',
     startCal: dispStart,
+    sortDay: Math.floor(dispStart),
+    sortFrac: l.calS - dayIdx,
     // True clock time as written in the note: the agenda shows the real time of a
     // meeting, including ones outside working hours — calToDT cannot express those
     // (the cal fraction only maps into the working window), and the clamped
@@ -2233,12 +2251,17 @@ function meetRow(l, today) {
   };
 }
 
-// Tasks and meetings interleaved in chronological (cal) order.
+// Tasks and meetings interleaved in chronological (cal) order. Primary key: the
+// display day. Secondary key: the intra-day position — the true clock fraction for
+// meetings, the scheduled working-window fraction for tasks (09:00 -> 0, 17:00 -> 1;
+// a pre-hours meeting is < 0 and a post-hours one is > 1, so both compare correctly).
 function buildExecutionSequence(sched, locks, today) {
+  const dayOf = (e) => e.sortDay ?? Math.floor(e.startCal);
+  const fracOf = (e) => e.sortFrac ?? e.startCal - Math.floor(e.startCal);
   return [
     ...sched.map(taskRow),
     ...locks.map(l => meetRow(l, today))
-  ].sort((a, b) => a.startCal - b.startCal);
+  ].sort((a, b) => dayOf(a) - dayOf(b) || fracOf(a) - fracOf(b));
 }
 
 

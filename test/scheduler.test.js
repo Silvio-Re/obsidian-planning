@@ -87,6 +87,32 @@ assert.strictEqual(r5, null, 'no late tasks returns null');
 
 console.log('  PASS');
 
+// --- Work-day horizon must cover the farthest deadline ---
+// Slack (src/risk.js) only sees workDays: a deadline beyond a workload-sized horizon
+// would silently truncate the capacity window and understate slack. The horizon must
+// extend to max(deadline) regardless of how small the workload is.
+{
+  const { DateTime } = await import('luxon');
+  const { computeSchedule } = await import('../src/scheduler.js');
+  const { computeSlack } = await import('../src/risk.js');
+  const today = DateTime.fromISO('2026-09-14');
+  const SCHEDULE = { startHour: 9, hoursPerDay: 8 };
+  const items = [{
+    id: 'far', duration: 1, deadline: today.plus({ days: 120 }),
+    title: 'Far', path: 'F.md', line: 1, file: 'F', deps: [], ownStr: '--', inherited: true, priority: 2
+  }];
+  const sched = computeSchedule(items, [], today, SCHEDULE);
+  // 120 calendar days ≈ 86 workdays — far beyond the old workload-sized horizon (~7).
+  assert.ok(sched.workDays.length >= 86, `workDays horizon covers the far deadline, got ${sched.workDays.length}`);
+  const slacked = computeSlack(sched.sched, sched.workDays, sched.meetIv, SCHEDULE, today);
+  assert.ok(slacked[0].slackHours > 80 * 8, `slack counts the whole window, got ${slacked[0].slackHours}`);
+  // Small workloads keep the compact horizon (no render bloat for near deadlines).
+  const near = [{ ...items[0], deadline: today.plus({ days: 2 }) }];
+  const schedNear = computeSchedule(near, [], today, SCHEDULE);
+  assert.ok(schedNear.workDays.length < 20, `near-deadline horizon stays compact, got ${schedNear.workDays.length}`);
+}
+console.log('  work-day horizon covers far deadlines: PASS');
+
 console.log('\nAll scheduler tests passed!');
 process.exit(0);
 
