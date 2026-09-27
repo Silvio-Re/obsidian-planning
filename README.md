@@ -78,8 +78,10 @@ The planner uses **Earliest Deadline First (EDF)**:
 ## Output Dashboard
 
 1. **Today** — the day's agenda: every task segment and meeting that lands on today, with
-   clock times. Click a row to open the task; click the ✓ on the right to mark it done
-   (appends `✅ YYYY-MM-DD` to the task line — refresh to see the plan update).
+   clock times (meetings show their real start, even outside working hours). Click a
+   row to open the task; click the ✓ on the right to complete it — this flips the
+   checkbox to `- [x]` and appends `✅ YYYY-MM-DD` in the source note, so the task
+   leaves the plan and lands in the Completed log on the next refresh.
 2. **Capacity Chart** — cumulative hours owed vs. weekday capacity. Red bars = inherited deadlines;
    click a column to see which tasks must be cleared. Non-working days are shaded purple.
 3. **Gantt Chart** — visual schedule grouped by file/folder, collapsible groups, dependency arrows,

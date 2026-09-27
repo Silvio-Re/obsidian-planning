@@ -16,13 +16,15 @@ const buildScript = fs.readFileSync(path.join(ROOT, 'scripts/build.js'), 'utf8')
 
 // Check the planning-artifact file list is in the right order.
 // build.js groups source files per release artifact (ARTIFACTS); the planning.md dashboard chain
-// is the canonical ordering (constants first, index last).
+// is the canonical ordering (config first — USER_CONFIG must be the block a user sees
+// at the top of the bundle — then constants, index last).
 const srcFilesMatch = buildScript.match(/planning\.md':\s*\{\s*files:\s*\[([\s\S]*?)\]/);
 assert(srcFilesMatch, 'planning.md artifact files array exists');
 const srcFilesStr = srcFilesMatch[1];
 
 // Verify order: constants first, index last
 assert(srcFilesStr.indexOf('src/constants.js') < srcFilesStr.indexOf('src/utils.js'), 'constants before utils');
+assert(srcFilesStr.indexOf('src/config.js') < srcFilesStr.indexOf('src/constants.js'), 'config before constants (USER_CONFIG first in the bundle)');
 assert(srcFilesStr.indexOf('src/utils.js') < srcFilesStr.indexOf('src/parser.js'), 'utils before parser');
 assert(srcFilesStr.indexOf('src/parser.js') < srcFilesStr.indexOf('src/scheduler.js'), 'parser before scheduler');
 assert(srcFilesStr.indexOf('src/scheduler.js') < srcFilesStr.indexOf('src/capacity.js'), 'scheduler before capacity');
@@ -38,10 +40,11 @@ console.log('    file ordering: PASS');
 // --- All source files exist ---
 console.log('  Testing all source files exist...');
 const srcFiles = [
-  'src/constants.js', 'src/utils.js', 'src/parser.js', 'src/scheduler.js',
-  'src/capacity.js', 'src/render/capacity_chart.js', 'src/render/gantt.js',
+  'src/config.js', 'src/constants.js', 'src/utils.js', 'src/parser.js', 'src/scheduler.js',
+  'src/capacity.js', 'src/agenda.js', 'src/risk.js',
+  'src/render/agenda.js', 'src/render/capacity_chart.js', 'src/render/gantt.js',
   'src/render/execution_list.js', 'src/render/ignored.js', 'src/render/parsing_errors.js',
-  'src/render/completed.js', 'src/render/daily_notes.js',
+  'src/render/completed.js', 'src/render/daily_notes.js', 'src/render/risk.js',
   'src/execution_sequence.js', 'src/daily_notes.js', 'src/index.js',
 ];
 for (const f of srcFiles) {

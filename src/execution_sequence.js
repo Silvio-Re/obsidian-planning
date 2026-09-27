@@ -28,6 +28,11 @@ function meetRow(l, today) {
   return {
     kind: 'meet',
     startCal: dispStart,
+    // True clock time as written in the note: the agenda shows the real time of a
+    // meeting, including ones outside working hours — calToDT cannot express those
+    // (the cal fraction only maps into the working window), and the clamped
+    // startCal is only for date grouping and sort in the execution list.
+    meetTrueTime: `${String(l.hour).padStart(2, '0')}:${String(l.min).padStart(2, '0')}`,
     endCal: l.calE,
     title: l.title,
     hours: l.hours,

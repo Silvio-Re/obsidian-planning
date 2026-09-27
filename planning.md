@@ -363,10 +363,13 @@ function makeTaskOpener(app) {
 // Shared openTask instance (will be initialized in main)
 let openTask = null;
 
-// Mark a task line as completed by appending the \u2705 completion marker with
-// today's date, via vault.process (atomic read-modify-write). Returns true when
-// the line was modified. Refuses when the line already carries a completion
-// date or when the line index is out of range, so double clicks are no-ops.
+// Mark a task line as completed: flip the checkbox (- [ ] -> - [x]) AND append
+// the \u2705 completion marker with today's date, via vault.process (atomic
+// read-modify-write). The checkbox flip is what takes the task out of the plan
+// on the next refresh; the \u2705 date is what lets the Completed panel's date
+// filter place it. Returns true when the line was modified. Refuses when the
+// line already carries a completion date or when the line index is out of
+// range, so double clicks are no-ops. Lines without a checkbox are untouched.
 function makeTaskCompleter(app, todayISO) {
   return (path, line) => {
     try {
@@ -376,8 +379,14 @@ function makeTaskCompleter(app, todayISO) {
       app.vault.process(file, (text) => {
         const lines = text.split('\n');
         if (line < 0 || line >= lines.length) return text;
-        if (/\u2705/.test(lines[line])) return text;
-        lines[line] = lines[line].replace(/\s*$/, '') + ' \u2705 ' + todayISO;
+        const raw = lines[line];
+        if (/\u2705/.test(raw)) return text;
+        // Keep the line's own EOL style: a CRLF line keeps its \r.
+        const eol = /\r$/.test(raw) ? '\r' : '';
+        const body = raw.replace(/\s*$/, '');
+        const flipped = body.replace(/^([ \t]*- \[) \]/, '$1x]');
+        if (flipped === body && !/- \[x\]/.test(body)) return text;
+        lines[line] = flipped + ' \u2705 ' + todayISO + eol;
         changed = true;
         return lines.join('\n');
       });
@@ -1175,7 +1184,7 @@ function selectTodayAgenda(seq) {
 
 
 
-function renderAgenda(container, agendaRows, calToDT, today) {
+function renderAgenda(container, agendaRows, calToDT) {
   const box = container.createEl('div');
   box.style.cssText = 'font-size:13px;border:1px solid rgba(128,128,128,0.25);border-radius:6px;overflow:hidden;margin-top:4px;';
 
@@ -1186,11 +1195,17 @@ function renderAgenda(container, agendaRows, calToDT, today) {
 
   const lines = [];
   agendaRows.forEach((e, i) => {
-    const time = calToDT(e.startCal).toFormat('HH:mm');
+    // Meetings show their true clock time as written in the note (an 18:00 dinner
+    // sync says 18:00); calToDT only maps into the working window. Tasks keep startCal.
+    const time = e.kind === 'meet' && e.meetTrueTime != null ? e.meetTrueTime : calToDT(e.startCal).toFormat('HH:mm');
     const isMeet = e.kind === 'meet';
     const icon = isMeet ? '\u{1F4CC}' : '\u25b8';
-    const col = isMeet ? 'rgb(198,120,221)' : (e.late ? (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)') : 'rgb(97,175,239)');
-    const lateTag = e.late ? ' \u00b7 <b>LATE</b>' : '';
+    // Late meetings keep their purple identity (they are locked calendar events)
+    // but gain the red contour + LATE tag, matching the Gantt's late-meeting look.
+    const col = isMeet
+      ? (e.late ? 'rgb(224,108,117)' : 'rgb(198,120,221)')
+      : (e.late ? (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)') : 'rgb(97,175,239)');
+    const lateTag = e.late ? ' · <b>LATE</b>' : '';
     const dueTxt = isMeet ? 'fixed' : `due ${esc(e.dl)}`;
     lines.push(
       `<div class="arow prow" data-path="${escA(e.path)}" data-line="${e.line}" style="cursor:pointer;display:flex;gap:8px;align-items:baseline;padding:3px 8px;border-bottom:1px solid rgba(128,128,128,0.15);">` +
@@ -1213,10 +1228,12 @@ function renderAgenda(container, agendaRows, calToDT, today) {
 // work-day list, the per-day meeting intervals (meetIv) and the SCHEDULE config.
 //
 // Slack of a task = working capacity still available between its scheduled finish
-// and its deadline, minus the duration of every OTHER task that is scheduled to
-// finish after it but shares or precedes its deadline (that work must also fit
-// inside the same window). Late tasks are excluded: they are already late and are
-// surfaced by the lateness indicators elsewhere in the dashboard.
+// and its deadline, minus the duration of every OTHER on-time task that is
+// scheduled to finish after it but shares or precedes its deadline (that work
+// must also fit inside the same window). Late tasks are excluded everywhere:
+// they are already condemned and surfaced by the lateness indicators elsewhere —
+// counting them here would push on-time siblings to negative slack that says
+// nothing about the sibling itself.
 //
 // A task is AT RISK when its slack is positive but thin: less than a quarter of
 // a working day (SCHEDULE.hoursPerDay / 4). One small surprise — a meeting moved,
@@ -1248,7 +1265,7 @@ function computeSlack(sched, workDays, meetIv, SCHEDULE, today) {
   return sched.map(t => {
     const cap = windowCapacity(t.endCal, t.dlIdx, workDays, meetIv, SCHEDULE, today);
     const competing = sched
-      .filter(o => o !== t && o.endCal > t.endCal && o.dlIdx <= t.dlIdx)
+      .filter(o => o !== t && !o.late && o.endCal > t.endCal && o.dlIdx <= t.dlIdx)
       .reduce((s, o) => s + o.duration, 0);
     return { ...t, slackHours: cap - competing };
   });
@@ -2198,6 +2215,11 @@ function meetRow(l, today) {
   return {
     kind: 'meet',
     startCal: dispStart,
+    // True clock time as written in the note: the agenda shows the real time of a
+    // meeting, including ones outside working hours — calToDT cannot express those
+    // (the cal fraction only maps into the working window), and the clamped
+    // startCal is only for date grouping and sort in the execution list.
+    meetTrueTime: `${String(l.hour).padStart(2, '0')}:${String(l.min).padStart(2, '0')}`,
     endCal: l.calE,
     title: l.title,
     hours: l.hours,
@@ -2291,7 +2313,7 @@ if (!items.length) {
   // Today's agenda — first panel: the most actionable slice of the plan.
   const seq = buildExecutionSequence(sched, locks, today);
   const agendaRows = selectTodayAgenda(seq);
-  renderAgenda(section('Today'), agendaRows, scheduleData.calToDT, today);
+  renderAgenda(section('Today'), agendaRows, scheduleData.calToDT);
   // Capacity Chart
   renderCapacity(section('Capacity Chart'), capacityData, SCHEDULE_CONFIG);
   // Gantt Chart

@@ -69,7 +69,7 @@ if (!items.length) {
   // Today's agenda — first panel: the most actionable slice of the plan.
   const seq = buildExecutionSequence(sched, locks, today);
   const agendaRows = selectTodayAgenda(seq);
-  renderAgenda(section('Today'), agendaRows, scheduleData.calToDT, today);
+  renderAgenda(section('Today'), agendaRows, scheduleData.calToDT);
   // Capacity Chart
   renderCapacity(section('Capacity Chart'), capacityData, SCHEDULE_CONFIG);
   // Gantt Chart

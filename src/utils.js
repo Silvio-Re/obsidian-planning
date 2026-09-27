@@ -79,10 +79,13 @@ function makeTaskOpener(app) {
 // Shared openTask instance (will be initialized in main)
 let openTask = null;
 
-// Mark a task line as completed by appending the \u2705 completion marker with
-// today's date, via vault.process (atomic read-modify-write). Returns true when
-// the line was modified. Refuses when the line already carries a completion
-// date or when the line index is out of range, so double clicks are no-ops.
+// Mark a task line as completed: flip the checkbox (- [ ] -> - [x]) AND append
+// the \u2705 completion marker with today's date, via vault.process (atomic
+// read-modify-write). The checkbox flip is what takes the task out of the plan
+// on the next refresh; the \u2705 date is what lets the Completed panel's date
+// filter place it. Returns true when the line was modified. Refuses when the
+// line already carries a completion date or when the line index is out of
+// range, so double clicks are no-ops. Lines without a checkbox are untouched.
 function makeTaskCompleter(app, todayISO) {
   return (path, line) => {
     try {
@@ -92,8 +95,14 @@ function makeTaskCompleter(app, todayISO) {
       app.vault.process(file, (text) => {
         const lines = text.split('\n');
         if (line < 0 || line >= lines.length) return text;
-        if (/\u2705/.test(lines[line])) return text;
-        lines[line] = lines[line].replace(/\s*$/, '') + ' \u2705 ' + todayISO;
+        const raw = lines[line];
+        if (/\u2705/.test(raw)) return text;
+        // Keep the line's own EOL style: a CRLF line keeps its \r.
+        const eol = /\r$/.test(raw) ? '\r' : '';
+        const body = raw.replace(/\s*$/, '');
+        const flipped = body.replace(/^([ \t]*- \[) \]/, '$1x]');
+        if (flipped === body && !/- \[x\]/.test(body)) return text;
+        lines[line] = flipped + ' \u2705 ' + todayISO + eol;
         changed = true;
         return lines.join('\n');
       });

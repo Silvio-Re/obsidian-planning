@@ -3,10 +3,12 @@
 // work-day list, the per-day meeting intervals (meetIv) and the SCHEDULE config.
 //
 // Slack of a task = working capacity still available between its scheduled finish
-// and its deadline, minus the duration of every OTHER task that is scheduled to
-// finish after it but shares or precedes its deadline (that work must also fit
-// inside the same window). Late tasks are excluded: they are already late and are
-// surfaced by the lateness indicators elsewhere in the dashboard.
+// and its deadline, minus the duration of every OTHER on-time task that is
+// scheduled to finish after it but shares or precedes its deadline (that work
+// must also fit inside the same window). Late tasks are excluded everywhere:
+// they are already condemned and surfaced by the lateness indicators elsewhere —
+// counting them here would push on-time siblings to negative slack that says
+// nothing about the sibling itself.
 //
 // A task is AT RISK when its slack is positive but thin: less than a quarter of
 // a working day (SCHEDULE.hoursPerDay / 4). One small surprise — a meeting moved,
@@ -38,7 +40,7 @@ export function computeSlack(sched, workDays, meetIv, SCHEDULE, today) {
   return sched.map(t => {
     const cap = windowCapacity(t.endCal, t.dlIdx, workDays, meetIv, SCHEDULE, today);
     const competing = sched
-      .filter(o => o !== t && o.endCal > t.endCal && o.dlIdx <= t.dlIdx)
+      .filter(o => o !== t && !o.late && o.endCal > t.endCal && o.dlIdx <= t.dlIdx)
       .reduce((s, o) => s + o.duration, 0);
     return { ...t, slackHours: cap - competing };
   });

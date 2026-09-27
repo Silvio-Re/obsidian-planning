@@ -3,8 +3,9 @@
 // It uses dv, dv.app, and other Obsidian APIs, same as index.js.
 
 import { renderDailyCompleted } from './render/daily_notes.js';
+import { USER_CONFIG, folderQuery } from './config.js';
 
-const pages = dv.pages('"Projets"');
+const pages = dv.pages(folderQuery(USER_CONFIG.folders));
 
 const today = dv.date('today');
 

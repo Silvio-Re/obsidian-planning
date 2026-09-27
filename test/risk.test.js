@@ -79,6 +79,19 @@ const task = (over) => Object.assign({
   console.log('  earlier-deadline tasks do not compete: PASS');
 }
 
+// --- 5b. A late sibling sharing the deadline must NOT eat an on-time task's slack ---
+{
+  const slacked = computeSlack([
+    task({ title: 'onTime', endCal: 1.0, dlIdx: 2 }),
+    task({ title: 'late', endCal: 2.5, dlIdx: 2, late: true, line: 2 }),
+  ], workDays, meetIv, SCHEDULE, today);
+  const onTime = slacked.find(t => t.title === 'onTime');
+  // window (1, 2] = 1 cal = 8h; the late sibling (4h... use duration 4) must not subtract.
+  assert.ok(Math.abs(onTime.slackHours - 8) < 1e-9,
+    'late sibling excluded from competing, got ' + onTime.slackHours);
+  console.log('  late siblings excluded from slack: PASS');
+}
+
 // --- 6. At-risk sorted worst first ---
 {
   const slacked = [

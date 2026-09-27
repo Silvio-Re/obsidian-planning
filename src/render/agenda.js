@@ -6,7 +6,7 @@
 import { fmtHours } from '../constants.js';
 import { esc, escA, renderMd, openTask, wireDoneButtons } from '../utils.js';
 
-export function renderAgenda(container, agendaRows, calToDT, today) {
+export function renderAgenda(container, agendaRows, calToDT) {
   const box = container.createEl('div');
   box.style.cssText = 'font-size:13px;border:1px solid rgba(128,128,128,0.25);border-radius:6px;overflow:hidden;margin-top:4px;';
 
@@ -17,11 +17,17 @@ export function renderAgenda(container, agendaRows, calToDT, today) {
 
   const lines = [];
   agendaRows.forEach((e, i) => {
-    const time = calToDT(e.startCal).toFormat('HH:mm');
+    // Meetings show their true clock time as written in the note (an 18:00 dinner
+    // sync says 18:00); calToDT only maps into the working window. Tasks keep startCal.
+    const time = e.kind === 'meet' && e.meetTrueTime != null ? e.meetTrueTime : calToDT(e.startCal).toFormat('HH:mm');
     const isMeet = e.kind === 'meet';
     const icon = isMeet ? '\u{1F4CC}' : '\u25b8';
-    const col = isMeet ? 'rgb(198,120,221)' : (e.late ? (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)') : 'rgb(97,175,239)');
-    const lateTag = e.late ? ' \u00b7 <b>LATE</b>' : '';
+    // Late meetings keep their purple identity (they are locked calendar events)
+    // but gain the red contour + LATE tag, matching the Gantt's late-meeting look.
+    const col = isMeet
+      ? (e.late ? 'rgb(224,108,117)' : 'rgb(198,120,221)')
+      : (e.late ? (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)') : 'rgb(97,175,239)');
+    const lateTag = e.late ? ' · <b>LATE</b>' : '';
     const dueTxt = isMeet ? 'fixed' : `due ${esc(e.dl)}`;
     lines.push(
       `<div class="arow prow" data-path="${escA(e.path)}" data-line="${e.line}" style="cursor:pointer;display:flex;gap:8px;align-items:baseline;padding:3px 8px;border-bottom:1px solid rgba(128,128,128,0.15);">` +
