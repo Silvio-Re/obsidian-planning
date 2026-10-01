@@ -16,8 +16,12 @@ const ID_CHAR = '\u{1F194}';
 const BLOCK_CHAR = '\u{26D4}';
 
 const durRe = new RegExp(
-  `(${CLOCK_CHAR}:: *(\\d+(?:\\.\\d+)?)h)|${CLOCK_CHAR} *(\\d+(?:\\.\\d+)?)h`,
-  'u'
+  `${CLOCK_CHAR} *(?::: *)?(?:` +
+  `(?<th>\\d{1,2})[:h](?<tmm>\\d{2})(?![A-Za-z\\d])` +
+  `|(?<num>\\d+(?:[.,]\\d+)?) *(?<unit>h|hours?|d|days?|j|jours?|min(?:ute)?s?)(?![A-Za-z\\d])` +
+  `|(?<bnum>\\d{1,2}(?:[.,]\\d+)?)(?![A-Za-z\\d:]|\\s+[A-Za-z]|,\\s*[A-Za-z])` +
+  `)`,
+  'iu'
 );
 const dateRe = new RegExp(
   `${CALENDAR_CHAR}\\s*\\[*\\s*(\\d{4}-\\d{2}-\\d{2})(?:\\s*\\]*\\s*(\\d{1,2}):(\\d{2}))?`,
@@ -41,11 +45,23 @@ const priorityRe = new RegExp(
   'u'
 );
 
+const DAY_H = 7.8;
 function ownDur(t) {
   const dm = t.text.match(durRe);
   if (!dm) return 0;
-  const num = dm[2] || dm[3];
-  return num ? parseFloat(num) : 0;
+  const g = dm.groups;
+  const toNum = (s) => parseFloat(String(s).replace(',', '.'));
+  if (g.th != null) {
+    if (+g.tmm > 59) return 0;
+    return toNum(g.th) + toNum(g.tmm) / 60;
+  }
+  const raw = g.num ?? g.bnum;
+  if (raw == null) return 0;
+  const unit = (g.unit ?? 'h').toLowerCase();
+  const v = toNum(raw);
+  if (unit.startsWith('min')) return v / 60;
+  if (unit === 'd' || unit === 'j' || unit.startsWith('day') || unit.startsWith('jour')) return v * DAY_H;
+  return v;
 }
 
 function parsePriority(text) {

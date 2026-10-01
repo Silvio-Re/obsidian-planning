@@ -9,7 +9,7 @@ console.log('Testing config (USER_CONFIG, folderQuery)...');
 // Defaults match the documented setup (README: Projets folder, 9:00-17:00, 8h/day)
 assert.strictEqual(USER_CONFIG.folders, 'Projets', 'default folder is Projets');
 assert.strictEqual(USER_CONFIG.startHour, 9, 'default startHour is 9');
-assert.strictEqual(USER_CONFIG.hoursPerDay, 8, 'default hoursPerDay is 8');
+assert.strictEqual(USER_CONFIG.hoursPerDay, 7.8, 'default hoursPerDay is 7.8 (9:00 start, 7.8h day)');
 
 // Single folder (string) -> quoted Dataview source
 assert.strictEqual(folderQuery('Projets'), '"Projets"', 'single folder is quoted');

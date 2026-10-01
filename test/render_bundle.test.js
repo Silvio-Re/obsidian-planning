@@ -307,10 +307,13 @@ async function main() {
     const svg = findGanttSVG(root);
     assert.ok(svg, 'Gantt SVG rendered');
     const labels = svg.match(/\([\d.]+h → [^)]*\)/g) || [];
-    assert.ok(labels.some(l => l.includes('24h') && l.includes('18 Sep')),
-      'Alpha group finishes Friday 18 Sep, got: ' + labels.join(' '));
-    assert.ok(labels.some(l => l.includes('8h') && l.includes('16 Sep')),
-      'Beta group finishes Wednesday 16 Sep, got: ' + labels.join(' '));
+    // With a 7.8h day (USER_CONFIG.hoursPerDay), an 8h task spills 0.2h into the
+    // next day, so finishes cascade: Design ends 16 Sep, Write ends 17 Sep,
+    // Build ends workday index 4.1 = Mon 21 Sep (weekend skipped).
+    assert.ok(labels.some(l => l.includes('24h') && l.includes('21 Sep')),
+      'Alpha group finishes Monday 21 Sep, got: ' + labels.join(' '));
+    assert.ok(labels.some(l => l.includes('8h') && l.includes('17 Sep')),
+      'Beta group finishes Thursday 17 Sep, got: ' + labels.join(' '));
     console.log('    PASS');
   }
   console.log('\nAll end-to-end render tests passed!');

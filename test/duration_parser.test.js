@@ -6,17 +6,7 @@
 // Use a regex literal to properly include the ⏱ character
 // Note: In regex literals, we use ( and ) for groups, not \( and \)
 const clock = '\u23f1';
-const durRe = /(\u23f1:: *(\d+(?:\.\d+)?)h)|\u23f1 *(\d+(?:\.\d+)?)h/;
-
-function ownDur(t) {
-    const dm = t.text.match(durRe);
-    if (!dm) return 0;
-    // Group 1 = full match from first alternative (with parens)
-    // Group 2 = number from first alternative (with parens)
-    // Group 3 = number from second alternative (without parens)
-    const num = dm[2] || dm[3];
-    return num ? parseFloat(num) : 0;
-}
+import { durRe, ownDur } from '../src/constants.js';
 
 // Test cases - use the clock variable to ensure we have the actual ⏱ character
 const tests = [

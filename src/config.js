@@ -11,7 +11,7 @@
 export const USER_CONFIG = {
   folders: 'Projets',
   startHour: 9,
-  hoursPerDay: 8,
+  hoursPerDay: 7.8,
   // Days with no working capacity (holidays, vacation). Each entry is a
   // 'YYYY-MM-DD' date or a 'YYYY-MM-DD/YYYY-MM-DD' inclusive range.
   nonWorkingDays: [],

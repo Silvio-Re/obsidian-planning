@@ -13,7 +13,7 @@
 const USER_CONFIG = {
   folders: 'Projets',
   startHour: 9,
-  hoursPerDay: 8,
+  hoursPerDay: 7.8,
   // Days with no working capacity (holidays, vacation). Each entry is a
   // 'YYYY-MM-DD' date or a 'YYYY-MM-DD/YYYY-MM-DD' inclusive range.
   nonWorkingDays: [],
@@ -61,6 +61,7 @@ function nonWorkingSet(days) {
   }
   return set;
 }
+
 
 
 
@@ -130,8 +131,12 @@ const priorityRe = new RegExp(
 );
 
 const durRe = new RegExp(
-  `(${CLOCK_CHAR}:: *(\\d+(?:\\.\\d+)?)h)|${CLOCK_CHAR} *(\\d+(?:\\.\\d+)?)h`,
-  'u'
+  `${CLOCK_CHAR} *(?::: *)?(?:` +
+  `(?<th>\\d{1,2})[:h](?<tmm>\\d{2})(?![A-Za-z\\d])` +
+  `|(?<num>\\d+(?:[.,]\\d+)?) *(?<unit>h|hours?|d|days?|j|jours?|min(?:ute)?s?)(?![A-Za-z\\d])` +
+  `|(?<bnum>\\d{1,2}(?:[.,]\\d+)?)(?![A-Za-z\\d:]|\\s+[A-Za-z]|,\\s*[A-Za-z])` +
+  `)`,
+  'iu'
 );
 
 const dateRe = new RegExp(
@@ -256,8 +261,21 @@ function formatCompletedLine(t) {
 function ownDur(t) {
   const dm = t.text.match(durRe);
   if (!dm) return 0;
-  const num = dm[2] || dm[3];
-  return num ? parseFloat(num) : 0;
+  const g = dm.groups;
+  const toNum = (s) => parseFloat(String(s).replace(',', '.'));
+  if (g.th != null) {
+    if (+g.tmm > 59) return 0;
+    return toNum(g.th) + toNum(g.tmm) / 60;
+  }
+  const raw = g.num ?? g.bnum;
+  if (raw == null) return 0;
+  const unit = (g.unit ?? 'h').toLowerCase();
+  const v = toNum(raw);
+  if (unit.startsWith('min')) return v / 60;
+  if (unit === 'd' || unit === 'j' || unit.startsWith('day') || unit.startsWith('jour')) {
+    return v * (USER_CONFIG?.hoursPerDay || 7.8);
+  }
+  return v;
 }
 
 function cleanTitle(text) {

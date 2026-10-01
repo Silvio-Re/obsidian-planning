@@ -1,3 +1,4 @@
+import { USER_CONFIG } from './config.js';
 // Emoji Constants
 // DO NOT EDIT - Use escape sequences from EMOJI_REFERENCE.md
 // AI MUST use these constants. NEVER use literal emoji.
@@ -64,8 +65,12 @@ export const priorityRe = new RegExp(
 );
 
 export const durRe = new RegExp(
-  `(${CLOCK_CHAR}:: *(\\d+(?:\\.\\d+)?)h)|${CLOCK_CHAR} *(\\d+(?:\\.\\d+)?)h`,
-  'u'
+  `${CLOCK_CHAR} *(?::: *)?(?:` +
+  `(?<th>\\d{1,2})[:h](?<tmm>\\d{2})(?![A-Za-z\\d])` +
+  `|(?<num>\\d+(?:[.,]\\d+)?) *(?<unit>h|hours?|d|days?|j|jours?|min(?:ute)?s?)(?![A-Za-z\\d])` +
+  `|(?<bnum>\\d{1,2}(?:[.,]\\d+)?)(?![A-Za-z\\d:]|\\s+[A-Za-z]|,\\s*[A-Za-z])` +
+  `)`,
+  'iu'
 );
 
 export const dateRe = new RegExp(
@@ -190,8 +195,21 @@ export function formatCompletedLine(t) {
 export function ownDur(t) {
   const dm = t.text.match(durRe);
   if (!dm) return 0;
-  const num = dm[2] || dm[3];
-  return num ? parseFloat(num) : 0;
+  const g = dm.groups;
+  const toNum = (s) => parseFloat(String(s).replace(',', '.'));
+  if (g.th != null) {
+    if (+g.tmm > 59) return 0;
+    return toNum(g.th) + toNum(g.tmm) / 60;
+  }
+  const raw = g.num ?? g.bnum;
+  if (raw == null) return 0;
+  const unit = (g.unit ?? 'h').toLowerCase();
+  const v = toNum(raw);
+  if (unit.startsWith('min')) return v / 60;
+  if (unit === 'd' || unit === 'j' || unit.startsWith('day') || unit.startsWith('jour')) {
+    return v * (USER_CONFIG?.hoursPerDay || 7.8);
+  }
+  return v;
 }
 
 export function cleanTitle(text) {

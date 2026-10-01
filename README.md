@@ -19,10 +19,28 @@ Tasks are Obsidian task lines (`- [ ]`) with emoji-based metadata embedded in th
 | Emoji | Name | Syntax | Example |
 |-------|------|--------|---------|
 | 🔺–⏬ | Priority | *(emoji alone)* | `- [ ] Review architecture doc 🔺` |
-| ⏱ | Duration | `⏱ Nh` | `- [ ] Implement feature ⏱ 4h` |
+| ⏱ | Duration | `⏱ N` / `N h│min│d│j` / `H:MM` | `- [ ] Implement feature ⏱ 4h` |
 | 📅 | Deadline | `📅 YYYY-MM-DD` (optional time) | `- [ ] Fix auth bug 📅 2025-01-15` |
 | 🆔 | ID | `🆔 task-id` | `- [ ] Implement login 🆔 auth-module` |
 | ⛔ | Dependency | `⛔ dep-id` | `- [ ] Write tests ⛔ auth-module` |
+
+### Duration
+
+The ⏱ marker accepts several forms; all values are converted to hours:
+
+| Form | Example | Hours |
+|------|---------|-------|
+| `H:MM` or `HhMM` | `⏱ 2:30`, `⏱ 2h30` | 2.5 |
+| `N` (no unit) | `⏱ 4` | 4 |
+| `N h` / `N hours` | `⏱ 2.5h` | 2.5 |
+| `N min` / `N minutes` | `⏱ 45 min` | 0.75 |
+| `N d` / `N j` / `N days` / `N jours` | `⏱ 2d`, `⏱ 1.5j` | N × `USER_CONFIG.hoursPerDay` (7.8 by default) |
+
+- A space between number and unit is optional; units are case-insensitive.
+- Decimals accept `.` or `,` (`⏱ 2,5h` = 2.5h).
+- A bare number means hours (max 2 integer digits — `⏱ 100` is rejected; write `⏱ 100h`).
+- `m` alone is **not** minutes — write `min`.
+- Only the first duration token is read (`⏱ 3 d 2h` = 3 days).
 
 ### Priority
 
@@ -65,7 +83,7 @@ an earlier deadline, it becomes the effective deadline for its dependency.
 
 The planner uses **Earliest Deadline First (EDF)**:
 
-- **Work hours**: 9:00–17:00 weekdays, 8h/day (configurable in `USER_CONFIG`)
+- **Work hours**: 9:00–16:48 weekdays, 7.8h/day (configurable in `USER_CONFIG`; also the value of a `⏱ 1d` / `1j` duration)
 - **Single resource**: only one task runs at a time
 - **Meetings are fixed**: locked tasks occupy hard blocks
 - **Non-working days**: holidays and vacation days listed in `USER_CONFIG.nonWorkingDays`
