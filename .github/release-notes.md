@@ -1,77 +1,71 @@
-Today agenda, click-to-complete, at-risk panel, scheduling fixes
-================================================================
+Deep-review correctness pass, click-to-complete removed
+=========================================================
 
-This release brings the planner's most actionable view to the top of the dashboard,
-adds one-click completion, and hardens scheduling correctness after two deep
-reviews. It also answers the question "what should I do now?" at a glance.
+This release lands the major and moderate findings of a deep code review:
+the capacity chart becomes DST-safe and finally agrees with the scheduler's
+deadline rule, the click-to-complete experiment is retired in favor of
+completing tasks natively in your notes, and clicking a task whose note is
+not already open now reliably selects and scrolls to its line.
 
-### 📅 Today agenda — the new first panel
+### 📊 Capacity chart — DST-safe and honest about deadlines
 
-- **One panel for today's plan.** Scheduled task segments and meetings that land
-  on today, in true chronological order with real clock times, at the very top
-  of the dashboard. Meetings show the time as written in the note — an 18:00
-  dinner sync says 18:00 even when it falls outside working hours.
-- **Early-morning meetings sort correctly.** An 08:00 meeting now precedes a
-  09:00 task (both used to clamp to the same start position); an after-hours
-  meeting stays last on its own day instead of rolling into the next.
+- **No more DST drift.** Weekday detection and cumulative capacity now use
+  Luxon `DateTime` objects instead of raw ISO-string arithmetic, so a
+  daylight-saving transition can no longer double-count or drop a day's
+  hours.
+- **The chart agrees with the scheduler.** A task due on day D is owed by the
+  end of D−1 (the deadline is a buffer — README rule). The demand curve now
+  follows that same rule, and deficits propagate forward: once you miss,
+  the chart stays red until capacity catches up. Red bars on the deadline
+  columns are the last moment you can still act.
+- **Custom-range rotation is DST-safe too.** Re-opening a saved custom scope
+  re-uses the stored `DateTime` instead of re-deriving it from a date string,
+  so the range cannot land on the wrong day after a DST change.
 
-### ✓ Click-to-complete
+### ✂️ Click-to-complete removed
 
-- **Every agenda and execution-list row carries a ✓ button.** Clicking it
-  flips the task's checkbox (`- [ ]` → `- [x]`) **and** appends the ✅
-  completion date marker, so the task leaves the plan on the next refresh and
-  shows up in the Completed panel and the daily-note view. Double clicks are
-  no-ops; the row's own click-to-open still works.
-- **The parsing-error guard:** a meeting with an invalid time (e.g. `99:00`)
-  is no longer scheduled — it drew a bar outside its Gantt day box and printed
-  a nonsense agenda time. It is flagged in the parsing-errors panel instead.
+- The ✓ buttons (settings checkbox mode, refresh wiring, completer) are gone.
+  Mark a task as done **natively**: check its `- [ ]` box in the source note,
+  optionally appending `✅ YYYY-MM-DD`. It leaves the plan and shows up in
+  the Completed panel on the next refresh. One less DOM-rewriting layer, and
+  no risk of the completer drifting from Obsidian's own checkbox semantics.
 
-### 📊 At-risk panel
+### 🖱️ Click-to-open fixed for notes that aren't open yet
 
-- **On time but with almost no slack.** Tasks whose positive slack margin is
-  thinner than a quarter working day, sorted worst-first, in their own panel.
-  Late tasks are excluded — they are already flagged by the lateness
-  indicators.
+- Clicking a task used to open the note but silently fail to select/scroll to
+  the line whenever that note wasn't already open in a tab — three compounding
+  races (a dropped hint on retry, a 600ms give-up budget, and an ignored
+  scroll state). The opener now waits for the tab to finish loading, keeps
+  the handle through every retry (~3s budget for slow vaults), and passes
+  Obsidian's built-in `eState` line position as a safety net.
 
-### 📈 Dashboards & config
+### 🔧 Maintenance
 
-- **`USER_CONFIG` block** at the top of the script: folders, start hour, hours
-  per day and non-working days (holidays, vacation) are configurable without
-  touching the logic. Non-working days carry zero capacity and are shaded in
-  the charts.
-- **Daily-note view honors `USER_CONFIG`** — the "completed today" daily.md
-  script uses the same folder list and filters to the note's date.
-- **Gantt finish dates**: group rows show finish dates computed from the
-  schedule, and late meetings render red (consistent across Gantt and agenda).
-
-### 🔧 Scheduling fixes
-
-- **Completion marker no longer breaks duration parsing.** The completer
-  used to append a marker that the parser then misread; durations are now
-  parsed strictly from the task text.
-- **Slack horizon widened.** The work-day horizon now extends past the
-  farthest deadline, so slack (at-risk) computations are no longer silently
-  truncated for far-future deadlines.
+- **Test runner auto-discovers** every `test/*.test.js|.mjs` — new test files
+  are picked up automatically, no allow-list to update.
+- **Pure render helpers extracted** to `src/render_model.js` (zoom anchor
+  math, pins, completion-tree traversal) with direct unit tests — the
+  previously untested scheduling-math core of the charts.
+- The agenda summary line renders as plain text, so trend marks (`!!`, `?`)
+  inside note text can no longer inject HTML.
 
 ### 🧪 Tests
 
-- 29 test files, all green — including new regression tests for every fix
-  above (true-clock ordering, invalid-time exclusion, slack horizon, completer
-  semantics).
+- 30 test files, all green — new suites for the render model, the
+  realistic deadline semantics, and the task opener's async regression.
 
-### Changes since v0.5.4
+### Changes since v0.6.1
 
-- `src/execution_sequence.js` — true-clock sort keys (`sortDay`/`sortFrac`);
-  meetings keep requested-date grouping.
-- `src/agenda.js` — today-agenda selector.
-- `src/render/agenda.js`, `src/render/execution_list.js` — agenda panel;
-  ✓ done-buttons on rows.
-- `src/utils.js` — `makeTaskCompleter` (atomic checkbox flip + ✅ marker via
-  `vault.process`), `wireDoneButtons`.
-- `src/risk.js`, `src/render/risk.js` — at-risk slack computation and panel.
-- `src/parser.js` — invalid-time meetings excluded from locks.
-- `src/scheduler.js` — deadline-aware work-day horizon.
-- `src/config.js`, `src/render/capacity_chart.js` — `USER_CONFIG` and
-  non-working-day shading.
-- `test/` — new `agenda`, `task_completer` suites and extended coverage.
+- `src/capacity.js` — Luxon-based capacity; deadline-buffer demand rule;
+  forward deficit propagation.
+- `src/utils.js` — task opener: await `openFile`, hint kept on every retry,
+  `eState` fallback; click-to-complete helpers removed.
+- `src/render/agenda.js` — plain-text summary line.
+- `src/render_model.js` — extracted pure helpers (zoom, pins, completion tree).
+- `src/config.js` — DST-safe custom-range rotation.
+- `scripts/test-runner.js` — auto-discovery of test files.
+- `src/render/completed.js`, `daily_notes.js`, `execution_list.js` —
+  completed-view glue simplified after the mode removal.
+- `test/` — new `render_model` suite; `capacity`, `capacity_deadlines_realistic`,
+  `task_opener` reworked; `task_completer` removed.
 - `planning.md`, `daily.md` — regenerated bundles.
