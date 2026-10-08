@@ -10,7 +10,7 @@ export function computeCapacity(items, locks, today, SCHEDULE) {
   // Find date range
   const lastDeadline = items.reduce((mx, it) => (it.deadline > mx ? it.deadline : mx), today);
   const firstDeadline = items.reduce((mn, it) => (it.deadline < mn ? it.deadline : mn), lastDeadline);
-  const range = Math.max(1, Math.ceil(lastDeadline.diff(today, 'days').days));
+  const range = Math.max(1, Math.round(lastDeadline.diff(today, 'days').days));
   const startDate = firstDeadline < today ? firstDeadline : today;
   const endDate = today.plus({ days: 2 * range });
   const totalDays = Math.max(1, Math.round(endDate.diff(startDate, 'days').days));
@@ -44,9 +44,15 @@ export function computeCapacity(items, locks, today, SCHEDULE) {
   }
   for (let i = t0 - 1; i >= 0; i--) capHours[i] = 0;
 
-  // Calculate demand and values
+  // Demand owed by the END of day d: a task counts once its due-by day — its
+  // deadline minus the buffer day (README > Deadline: the deadline date is NOT
+  // usable working time, on-time means finished by midnight the day BEFORE) — has
+  // arrived, i.e. dueIdx <= d. The red deadline markers (marksData) stay on the
+  // deadline's own date; the demand line must lead them by one day or the chart
+  // shows a deficit only when it is already too late to act on it.
+  const dueIdx = items.map(it => Math.round(it.deadline.diff(startDate, 'days').days) - 1);
   for (let d = 0; d <= totalDays; d++) {
-    const demand = items.filter(it => it.deadline <= dateArr[d]).reduce((s, it) => s + it.duration, 0);
+    const demand = items.reduce((s, it, k) => s + (dueIdx[k] <= d ? it.duration : 0), 0);
     values.push(capHours[d] - demand);
   }
 

@@ -28,7 +28,8 @@ function taskRow(s) {
 // sorts before a 09:00 task even though both clamp to startCal 0, while a post-hours
 // meeting stays after the day's last task without rolling into the next day.
 function meetRow(l, today) {
-  const dayIdx = l.day.diff(today, 'days').days;
+  // Integer calendar-day index (DST-exact — see scheduler.js note on Math.round).
+  const dayIdx = Math.round(l.day.diff(today, 'days').days);
   const dispStart = Math.max(dayIdx, Math.min(l.calS, dayIdx + 1 - 1e-9));
   return {
     kind: 'meet',

@@ -97,16 +97,15 @@ The planner uses **Earliest Deadline First (EDF)**:
 
 1. **Today** — the day's agenda: every task segment and meeting that lands on today, with
    clock times (meetings show their real start, even outside working hours). Click a
-   row to open the task; click the ✓ on the right to complete it — this flips the
-   checkbox to `- [x]` and appends `✅ YYYY-MM-DD` in the source note, so the task
-   leaves the plan and lands in the Completed log on the next refresh.
+   row to open the task. Complete a task natively (check its `- [ ]` box in the source
+   note, optionally appending `✅ YYYY-MM-DD`) and it leaves the plan, landing in the
+   Completed log on the next refresh.
 2. **Capacity Chart** — cumulative hours owed vs. weekday capacity. Red bars = inherited deadlines;
    click a column to see which tasks must be cleared. Non-working days are shaded purple.
 3. **Gantt Chart** — visual schedule grouped by file/folder, collapsible groups, dependency arrows,
    late tasks color-coded. Group labels carry the subtree's total and its scheduled finish
    date (`(24h → 18 Sep)`).
-4. **Execution List** — ordered, what-to-do-next with times. Click any row to open the source task;
-   click its ✓ to complete it.
+4. **Execution List** — ordered, what-to-do-next with times. Click any row to open the source task.
 5. **At Risk** — on-time tasks with less than a quarter working day of slack before their deadline.
    Not late yet, but one surprise away from it — the place to look before committing to new work.
 6. **Ignored Tasks** — undone tasks with no effective deadline (review, correct, or delete).
@@ -133,7 +132,7 @@ The planner uses **Earliest Deadline First (EDF)**:
 src/
   config.js             — USER_CONFIG: folders, hours, non-working days (pure, user-facing)
   constants.js          — Emoji constants, regex patterns, parsing helpers
-  utils.js              — HTML escaping, markdown rendering, openTask, click-to-complete
+  utils.js              — HTML escaping, markdown rendering, openTask
   parser.js             — Collect tasks from Obsidian pages, build dependency graph
   scheduler.js          — EDF scheduling with priority correction
   capacity.js           — Hours owed vs. available

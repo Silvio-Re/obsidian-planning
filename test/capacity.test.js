@@ -31,7 +31,9 @@ assert.strictEqual(c1.values[0], 0, 'no items, no demand, no capacity change');
 // Single item
 const c2 = computeCapacity([item(4, 1)], [], today, SCHEDULE);
 assert(c2.values.length > 0, 'has values');
-assert.strictEqual(c2.values[0], 0, 'day 0: no demand');
+// Deadline day 1 is a buffer: the 4h are owed by end of day 0 (README > Deadline).
+// Day 0 carries no accumulated capacity (capHours[t0] = 0), so values[0] = -4.
+assert.strictEqual(c2.values[0], -4, 'day 0: demand owed the day before the deadline');
 assert.strictEqual(c2.values[1], 4, 'day 1: 8h cap - 4h demand = 4');
 console.log('    basic capacity: PASS');
 
@@ -57,9 +59,10 @@ const items2 = [
   item(1, 1), // also due tomorrow
 ];
 const c4 = computeCapacity(items2, [], today, SCHEDULE);
-// demand at day 1: 2 + 1 = 3. capHours[1] = 8. values[1] = 5.
-// demand at day 2: + 3 more = 6. capHours[2] = 16. values[2] = 16 - 6 = 10.
-assert.strictEqual(c4.values[0], 0, 'day 0 has no deficit');
+// Buffer-day semantics: the 3h due day 1 (2h + 1h) are owed by end of day 0,
+// so day 0 already carries the deficit: 0 - 3 = -3 (then fwd-min keeps it).
+// demand at day 1: + 3 more (day-2 item) = 6. capHours[2] = 16. values[2] = 16 - 6 = 10.
+assert.strictEqual(c4.values[0], -3, 'day 0 carries the day-1 deadline tasks (3h)');
 console.log('    multiple items: PASS');
 
 // --- Inherited deadline grouping ---

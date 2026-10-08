@@ -58,6 +58,24 @@ const ARTIFACTS = {
 
 console.log(`Building ${Object.keys(ARTIFACTS).join(' & ')} from source files...`);
 
+// Fail the build if any src/**/*.js file is not listed in an ARTIFACTS bundle: an
+// unlisted file would silently never ship, and a stale entry would silently dead-code
+// in the bundle. Every source file must be reachable from at least one artifact.
+const listedFiles = new Set(Object.values(ARTIFACTS).flatMap(a => a.files));
+function listSrcFiles(dir, acc) {
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, ent.name);
+    if (ent.isDirectory()) listSrcFiles(p, acc);
+    else if (ent.isFile() && ent.name.endsWith('.js')) acc.push(path.relative(PROJECT_ROOT, p).split(path.sep).join('/'));
+  }
+  return acc;
+}
+const unlisted = listSrcFiles(path.join(PROJECT_ROOT, 'src'), []).filter(f => !listedFiles.has(f));
+if (unlisted.length > 0) {
+  console.error(`  ERROR: src file(s) not listed in any ARTIFACTS bundle (they would silently never ship):\n    ${unlisted.join('\n    ')}`);
+  hasError = true;
+}
+
 // Read every file for an artifact, returning { fileContents, hasError }. Missing files are
 // reported per-file; the caller aborts the whole build if any are missing.
 function readAll(files) {
@@ -81,7 +99,7 @@ function readAll(files) {
 // source files but must not dedupe declarations across one another).
 function bundle(fileContents, files) {
   const processed = new Set();
-  const declaredIdentifiers = new Set();
+  const declaredIdentifiers = new Map(); // name -> first declaration line (verbatim)
 
   function resolveImports(filePath) {
     const relPath = path.relative(PROJECT_ROOT, filePath);
@@ -92,20 +110,44 @@ function bundle(fileContents, files) {
     processed.add(relPath);
 
     let content = fileContents[relPath];
+    if (content == null) throw new Error(`cannot read ${relPath} — is it listed in an ARTIFACTS bundle?`);
 
     // Remove all import/export statements and replace with actual code
     const importRegex = /import\s*{\s*([^}]+)\s*}\s*from\s*['"]([^'"]+)['"]\s*;/g;
 
     let result = '';
     let match;
+    const consumedImports = new Set();
 
     while ((match = importRegex.exec(content)) !== null) {
+      consumedImports.add(match[0].trim());
       const fromFile = match[2];
       const fromPath = path.join(path.dirname(relPath), fromFile);
       const fromRelPath = path.relative(PROJECT_ROOT, fromPath);
+      if (!(fromFile in fileContents) && !fs.existsSync(path.join(PROJECT_ROOT, fromPath))) {
+        throw new Error(`${relPath}: cannot resolve import '${fromFile}' — only relative imports of files in an ARTIFACTS bundle are supported (npm packages cannot be inlined)`);
+      }
 
       if (!processed.has(fromRelPath)) {
         result += resolveImports(fromPath);
+      }
+    }
+
+    // Fail on any import/export statement the resolver does NOT understand, instead of
+    // silently stripping it: an unrecognized form (default import, re-export, bare
+    // specifier...) would leave a dangling reference and crash the bundle at runtime,
+    // far from the cause. Supported: named `import { a } from '...'` and declaration
+    // exports (`export function/const/let/var/class ...`).
+    for (const impLine of content.match(/^[ \t]*import\b[^\n]*/gm) || []) {
+      if (!consumedImports.has(impLine.trim())) {
+        throw new Error(`${relPath}: unsupported import form (only ` +
+          `import { ... } from '...' is understood):\n    ${impLine.trim()}`);
+      }
+    }
+    for (const expLine of content.match(/^[ \t]*export\b[^\n]*/gm) || []) {
+      if (!/^export\s+(async\s+)?(function|const|let|var|class)\b/.test(expLine.trim())) {
+        throw new Error(`${relPath}: unsupported export form (only ` +
+          `export function/const/let/var/class is understood):\n    ${expLine.trim()}`);
       }
     }
 
@@ -126,10 +168,16 @@ function bundle(fileContents, files) {
       const lineDeclMatch = line.match(/^(const|let|var)\s+([a-zA-Z_$][0-9a-zA-Z_$]*)/);
       if (lineDeclMatch) {
         const name = lineDeclMatch[2];
-        if (declaredIdentifiers.has(name) && !line.trim().startsWith('//')) {
+        if (declaredIdentifiers.has(name)) {
+          // A re-declaration is only benign when byte-identical to the first one (the
+          // same line inlined twice). Anything else is drift — refuse instead of
+          // silently dropping one of the two conflicting declarations.
+          if (declaredIdentifiers.get(name) !== line) {
+            throw new Error(`${relPath}: top-level '${lineDeclMatch[1]} ${name}' is declared twice with different content — refusing to silently drop one (first seen elsewhere in this bundle)`);
+          }
           continue;
         }
-        declaredIdentifiers.add(name);
+        declaredIdentifiers.set(name, line);
       }
       filteredLines.push(line);
     }

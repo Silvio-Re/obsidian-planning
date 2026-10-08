@@ -79,66 +79,7 @@ function makeTaskOpener(app) {
 // Shared openTask instance (will be initialized in main)
 let openTask = null;
 
-// Mark a task line as completed: flip the checkbox (- [ ] -> - [x]) AND append
-// the \u2705 completion marker with today's date, via vault.process (atomic
-// read-modify-write). The checkbox flip is what takes the task out of the plan
-// on the next refresh; the \u2705 date is what lets the Completed panel's date
-// filter place it. Returns true when the line was modified. Refuses when the
-// line already carries a completion date or when the line index is out of
-// range, so double clicks are no-ops. Lines without a checkbox are untouched.
-function makeTaskCompleter(app, todayISO) {
-  return (path, line) => {
-    try {
-      const file = app.vault.getAbstractFileByPath(path);
-      if (!file || file.path !== path) return false;
-      let changed = false;
-      app.vault.process(file, (text) => {
-        const lines = text.split('\n');
-        if (line < 0 || line >= lines.length) return text;
-        const raw = lines[line];
-        if (/\u2705/.test(raw)) return text;
-        // Keep the line's own EOL style: a CRLF line keeps its \r.
-        const eol = /\r$/.test(raw) ? '\r' : '';
-        const body = raw.replace(/\s*$/, '');
-        const flipped = body.replace(/^([ \t]*- \[) \]/, '$1x]');
-        if (flipped === body && !/- \[x\]/.test(body)) return text;
-        lines[line] = flipped + ' \u2705 ' + todayISO + eol;
-        changed = true;
-        return lines.join('\n');
-      });
-      return changed;
-    } catch (_) {
-      return false;
-    }
-  };
-}
-
-// Shared completeTask instance (initialized in main, once today is known).
-let completeTask = null;
-
 // Initialize openTask when dv is available
 if (typeof dv !== 'undefined' && dv.app) {
   openTask = makeTaskOpener(dv.app);
-  completeTask = makeTaskCompleter(dv.app, dv.date('today').toFormat('yyyy-MM-dd'));
-}
-
-// Attach the \u2713 done-buttons inside a rendered panel. Each button marks its
-// task line completed (\u2705 today) in the source note; the row then greys out.
-// The click stops propagation so the row's own open-on-click keeps working, and
-// a successful completion disables the button to make double clicks no-ops.
-function wireDoneButtons(panel) {
-  panel.querySelectorAll('.done-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      if (btn.dataset.done === '1') return;
-      const ok = completeTask && completeTask(btn.getAttribute('data-path'), parseInt(btn.getAttribute('data-line'), 10));
-      if (ok) {
-        btn.dataset.done = '1';
-        btn.style.color = 'rgb(129,181,98)';
-        btn.style.fontWeight = 'bold';
-        btn.title = 'Completed today \u2014 refresh to see the plan update';
-      }
-    });
-  });
 }

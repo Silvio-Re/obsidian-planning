@@ -27,10 +27,11 @@ three in sync: bump `package.json` (+ `package-lock.json`), then `npm run build`
 
 - `npm test` runs a `pretest` hook that rebuilds and syntax-validates `planning.md`, then runs the
   test suite — you always test a fresh bundle. The suite is executed by `scripts/test-runner.js`,
-  which simply delegates to `node --test` (Node's built-in runner). The test files are listed
-  explicitly there (NOT auto-discovered): auto-discovery would also match
-  `test/harness/sandbox.mjs` and the runner itself, producing spurious passing files. When adding a
-  test file, register it in that allow-list too.
+  which auto-discovers every `test/*.test.js|.mjs` file and spawns each as its own process,
+  failing if any exits non-zero. Discovery explicitly skips `test/harness/sandbox.mjs`, the
+  runner itself, and any file under `test/harness/`, so a new `test/*.test.js` file is picked up
+  automatically — nothing to register. Each test file is a plain Node script (built-in `assert`;
+  `process.exit(0)` on success), not a `node --test` suite.
 - A read-only CI gate lives at `.github/workflows/ci.yml` (GitHub Actions; Node 20 + 22 matrix).
   It runs `npm test` **and then** `git diff --exit-code -- planning.md daily.md`, so it fails if the
   generated artifacts are out of sync with `src/`. Keep `planning.md` / `daily.md` in sync after

@@ -20,7 +20,9 @@
 function windowCapacity(from, to, workDays, meetIv, SCHEDULE, today) {
   let cap = 0;
   for (let i = 0; i < workDays.length; i++) {
-    const base = workDays[i].diff(today, 'days').days;
+    // Integer calendar-day index (DST-exact: midnight-to-midnight diff \u00b1 1/24 per
+    // boundary rounds back to the exact day count).
+    const base = Math.round(workDays[i].diff(today, 'days').days);
     const dayEnd = base + 1;
     const lo = Math.max(from, base);
     const hi = Math.min(to, dayEnd);

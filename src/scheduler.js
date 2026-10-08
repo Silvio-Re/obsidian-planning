@@ -49,7 +49,11 @@ export function createAllocator(today, workDays, meetIv, SCHEDULE) {
       let rem = hours;
       while (rem > 1e-9 && advance()) {
         const iv = ivs[fi];
-        const base = workDays[di].diff(today, 'days').days;
+        // Integer calendar-day index. Luxon's midnight-to-midnight diff across a DST
+        // boundary returns n \u00b1 1/24 per transition, so Math.round recovers the exact
+        // calendar-day count; the raw float would shift segments ~1h and, after the
+        // Math.floor in calToDT, land work on the wrong calendar day.
+        const base = Math.round(workDays[di].diff(today, 'days').days);
         const availH = (iv[1] - pos) * SCHEDULE.hoursPerDay;
         const take = Math.min(availH, rem);
         const tf = take / SCHEDULE.hoursPerDay;
@@ -136,7 +140,8 @@ export function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
 
   // First, allocate time for locked items (they've been placed first)
   for (const lockedItem of lockedItems) {
-    const dlIdx = lockedItem.deadline.diff(today, 'days').days;
+    // Integer day index — DST-exact (see the note in createAllocator).
+    const dlIdx = Math.round(lockedItem.deadline.diff(today, 'days').days);
     const segs = lockedItem.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(lockedItem.duration);
     const startCal = segs.length ? segs[0].calS : dlIdx;
     const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
@@ -184,7 +189,7 @@ export function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
     if (ready.length === 0) {
       for (const item of remainingItems) {
         if (!scheduled.has(`${item.path}:${item.line}`)) {
-          const dlIdx = item.deadline.diff(today, 'days').days;
+          const dlIdx = Math.round(item.deadline.diff(today, 'days').days);
           const segs = item.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(item.duration);
           const startCal = segs.length ? segs[0].calS : dlIdx;
           const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
@@ -204,7 +209,7 @@ export function scheduleWithEDF(remainingItems, lockedItems, allocator, today) {
     scheduled.add(`${chosen.path}:${chosen.line}`);
     if (chosen.id != null) scheduled.add(chosen.id);
 
-    const dlIdx = chosen.deadline.diff(today, 'days').days;
+    const dlIdx = Math.round(chosen.deadline.diff(today, 'days').days);
     const segs = chosen.duration <= 0 ? [{ calS: dlIdx, calE: dlIdx }] : allocator.allocate(chosen.duration);
     const startCal = segs.length ? segs[0].calS : dlIdx;
     const endCal = segs.length ? segs[segs.length - 1].calE : dlIdx;
@@ -230,7 +235,7 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
   // Work-day horizon must cover BOTH the workload AND the farthest deadline: slack
   // (src/risk.js) only sees workDays, so a deadline beyond a workload-sized horizon
   // would silently truncate the capacity window and understate slack.
-  const maxDLDay = Math.max(0, ...items.map(it => it.deadline.diff(today, 'days').days));
+  const maxDLDay = Math.max(0, ...items.map(it => Math.round(it.deadline.diff(today, 'days').days)));
   const needWD = Math.max(
     Math.ceil(totalWH / (SCHEDULE.hoursPerDay / 2)) + 6,
     Math.ceil(maxDLDay) + 1
@@ -244,6 +249,11 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
   while (workDays.length < needWD && guard++ < 9000) {
     if (d.weekday <= 5 && !nonWorking.has(d.toFormat('yyyy-MM-dd'))) workDays.push(d);
     d = d.plus({ days: 1 });
+  }
+  if (workDays.length < needWD) {
+    // Guard trip = ~24 years of consecutive non-working days, or a pathological
+    // deadline: warn instead of silently returning a truncated horizon.
+    console.warn('[planning] computeSchedule: work-day horizon truncated after 9000 calendar days; the schedule is incomplete (check USER_CONFIG.nonWorkingDays)');
   }
 
   const wdIndex = {};
@@ -264,7 +274,7 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
     // a meeting that starts past the working day reserves no extra working time.
     const lockS = Math.max(0, Math.min(1, s));
     const lockE = Math.max(lockS, Math.min(1, e));
-    const dayIdx = lk.day.diff(today, 'days').days;
+    const dayIdx = Math.round(lk.day.diff(today, 'days').days);
     lk.calS = dayIdx + s;
     lk.calE = dayIdx + e;
     if (i != null) (meetIv[i] = meetIv[i] || []).push({ s: lockS, e: lockE });
@@ -328,6 +338,12 @@ export function computeSchedule(items, locks, today, SCHEDULE) {
       );
       lockedItems.push(item);
     }
+  }
+
+  if (iteration >= maxIterations && hasPriorityInversionAmongLate(finalSched)) {
+    // Non-convergence means the inversion could not be resolved by locking (all
+    // candidates already locked): warn instead of silently returning the last try.
+    console.warn(`[planning] computeSchedule: priority correction did not converge in ${maxIterations} iterations; returning the schedule with an unresolved priority inversion`);
   }
 
   const sched = finalSched;

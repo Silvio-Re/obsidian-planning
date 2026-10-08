@@ -107,7 +107,10 @@ const mixedItems = [
 ];
 const capMixed = computeCapacity(mixedItems, [], today, SCHEDULE);
 const mixedMin = Math.min(...capMixed.values);
-assert(mixedMin >= 0, `mixed deadlines fit: min=${mixedMin}`);
+// Buffer-day semantics: the two day-1 items (6h + 2h) are owed by end of day 0,
+// and day 0 carries no capacity, so the only deficit is that day-0 spike: -8.
+// Everything from day 1 onward fits on accumulated capacity.
+assert(mixedMin === -8, `mixed deadlines: only the day-0 spike is in deficit: min=${mixedMin}`);
 assert(capMixed.byDay['1'].length, 'day 1 has items');
 assert(capMixed.byDay['5'].length, 'day 5 has items');
 assert(capMixed.byDay['10'].length, 'day 10 has items');
@@ -126,13 +129,14 @@ console.log('    zero duration items: PASS');
 
 console.log('  Testing meeting locks reduce capacity...');
 
-const locks1 = [meet(1, 2)]; // 2h meeting on day 1
-const meetItems = [item(6, 1)]; // 6h due day 1
+const locks1 = [meet(1, 2)]; // 2h meeting on day 1 (day-1 capacity: 8 - 2 = 6h)
+// Buffer-day semantics: work due day 2 must fit into day 1's post-meeting capacity.
+const meetItems = [item(6, 2)]; // 6h due day 2 -> exactly fits day 1's 6h
 const capMeet = computeCapacity(meetItems, locks1, today, SCHEDULE);
 const meetMin = Math.min(...capMeet.values);
 assert(meetMin >= 0, `meeting doesn't cause deficit with exactly-fitting demand: min=${meetMin}`);
 
-const meetItems2 = [item(7, 1)]; // 7h due day 1
+const meetItems2 = [item(7, 2)]; // 7h due day 2 -> 1h over day 1's 6h
 const capMeet2 = computeCapacity(meetItems2, locks1, today, SCHEDULE);
 const meetMin2 = Math.min(...capMeet2.values);
 assert(meetMin2 < 0, `meeting + extra demand causes deficit: min=${meetMin2}`);
@@ -140,8 +144,9 @@ console.log('    meeting locks: PASS');
 
 console.log('  Testing multiple meetings on same day...');
 
-const locks2 = [meet(1, 3), meet(1, 4)]; // 3h + 4h = 7h
-const capMultiMeet = computeCapacity([item(2, 1)], locks2, today, SCHEDULE);
+const locks2 = [meet(1, 3), meet(1, 4)]; // 3h + 4h = 7h -> day-1 capacity: 1h
+// 2h due day 2 must fit into day 1's 1h remaining -> 1h short.
+const capMultiMeet = computeCapacity([item(2, 2)], locks2, today, SCHEDULE);
 const mmMin = Math.min(...capMultiMeet.values);
 assert(mmMin < 0, `multiple meetings cause deficit: min=${mmMin}`);
 console.log('    multiple meetings: PASS');

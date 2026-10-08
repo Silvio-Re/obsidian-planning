@@ -11,19 +11,10 @@
 // byte-identical). The tree helpers are parameterised by an explicit `collapsed` Set so tests can
 // drive collapse/expand directly.
 
-import { fmtHours } from './constants.js';
-import { esc, escA, renderMd } from './utils.js';
 
 // ---------------------------------------------------------------------------
 // Shared tree construction
 // ---------------------------------------------------------------------------
-
-// Collect every group id under node (used by "fold all" / "unfold all").
-export function collectGroupIds(node) {
-  let ids = [];
-  node.children.forEach(c => { ids.push(c.id); ids = ids.concat(collectGroupIds(c)); });
-  return ids;
-}
 
 // Split a vault path into the breadcrumb segments shown as group headers.
 export function segsOf(path) {
@@ -32,48 +23,6 @@ export function segsOf(path) {
   if (parts[0] === 'Projets') parts.shift();
   if (parts.length >= 2 && parts[parts.length - 1] === parts[parts.length - 2]) parts.pop();
   return parts.length ? parts : ['(root)'];
-}
-
-// ---------------------------------------------------------------------------
-// Gantt tree (Gantt uses two leaf kinds: tasks {k:'task', s, start} and meetings {k:'meet', l, start})
-// ---------------------------------------------------------------------------
-
-export function ganttNodeStart(node) {
-  let mn = Infinity;
-  node.items.forEach(e => mn = Math.min(mn, e.start));
-  node.children.forEach(c => mn = Math.min(mn, ganttNodeStart(c)));
-  return mn === Infinity ? 0 : mn;
-}
-
-export function ganttNodeTotal(node) {
-  let sum = 0;
-  for (const en of node.items) sum += en.k === 'task' ? (en.s.duration || 0) : (en.l.hours || 0);
-  for (const c of node.children.values()) sum += ganttNodeTotal(c);
-  return sum;
-}
-
-export function ganttAnnotate(node) {
-  node.total = ganttNodeTotal(node);
-  node.children.forEach(c => ganttAnnotate(c));
-}
-
-export function ganttCollectEntries(node, out) {
-  node.items.forEach(e => out.push(e));
-  node.children.forEach(c => ganttCollectEntries(c, out));
-  return out;
-}
-
-export function ganttFlatten(node, collapsed, out, depth = 0) {
-  const kids = [...node.children.values()].sort((a, b) => ganttNodeStart(a) - ganttNodeStart(b));
-  for (const c of kids) {
-    out.push({ type: 'group', node: c, depth });
-    if (!collapsed.has(c.id)) {
-      ganttFlatten(c, collapsed, out, depth + 1);
-      c.items.slice().sort((a, b) => a.start - b.start).forEach(en =>
-        out.push(en.k === 'task' ? { type: 'task', s: en.s, depth: depth + 1 } : { type: 'meet', l: en.l, depth: depth + 1 })
-      );
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -116,47 +65,6 @@ export function completionFlatten(node, collapsed, out, depth = 0) {
     }
   }
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Execution list
-// ---------------------------------------------------------------------------
-
-// Build the execution-list DOM lines for a schedule sequence. Pure apart from the
-// utils.js formatters (esc/escA/renderMd), which are safe in tests (dv is guarded).
-export function buildLines(seq, calToDT) {
-  const lines = [];
-  let prevDate = null;
-  seq.forEach((e, i) => {
-    // Meetings keep their requested calendar date (a post-working-hours meeting must
-    // show on that day, not roll to the next). Other rows fall back to startCal.
-    const dateStr = e.meetDateStr || calToDT(e.startCal).toFormat('ccc dd LLL');
-    const showDate = dateStr !== prevDate;
-    if (showDate) prevDate = dateStr;
-
-    let col, lateStyle;
-    if (e.kind === 'meet') {
-      if (e.late) {
-        col = e.priority === 3 || e.priority === 4 ? 'rgb(128,128,128)' : (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)');
-        lateStyle = 'background:rgba(224,108,117,0.1);';
-      } else { col = 'rgb(198,120,221)'; lateStyle = ''; }
-    }
-    else if (e.late) {
-      if (e.priority === 3 || e.priority === 4) { col = 'rgb(128,128,128)'; lateStyle = 'background:rgba(128,128,128,0.1);'; }
-      else if (e.priority === 2) { col = 'rgb(255,165,80)'; lateStyle = 'background:rgba(255,165,80,0.1);'; }
-      else { col = 'rgb(224,108,117)'; lateStyle = 'background:rgba(224,108,117,0.1);'; }
-    } else { col = 'rgb(97,175,239)'; lateStyle = ''; }
-
-    const dueTxt = e.kind === 'meet' ? 'fixed' : `due ${esc(e.dl)}`;
-
-    if (showDate) {
-      lines.push(`<div style="background:rgba(97,175,239,0.08);padding:3px 8px;font-weight:600;color:rgb(97,175,239);font-size:12px;border-bottom:1px solid rgba(128,128,128,0.2);">${esc(dateStr)}</div>`);
-    }
-
-    lines.push(`<div class="prow" data-path="${escA(e.path)}" data-line="${e.line}" style="cursor:pointer;padding:3px 6px;border-bottom:1px solid rgba(128,128,128,0.15);${lateStyle}"><span style="color:${col};font-weight:bold;float:left;width:24px;text-align:right;margin-right:8px;">${i + 1}.</span><div style="overflow:hidden;"><div style="margin-bottom:1px;">${renderMd(e.title)} <b>(${fmtHours(e.hours)}h)</b></div><div style="color:gray;font-size:11px;">${esc(e.file)} \u00b7 ${dueTxt}${e.late ? ' \u00b7 <b>LATE</b>' : ''}</div></div></div>`);
-  });
-
-  return lines;
 }
 
 // ---------------------------------------------------------------------------

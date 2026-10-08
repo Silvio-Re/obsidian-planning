@@ -4,7 +4,7 @@
 // Depends on: dv, app (task openers) — tested via the bundled planning.md.
 
 import { fmtHours } from '../constants.js';
-import { esc, escA, renderMd, openTask, wireDoneButtons } from '../utils.js';
+import { esc, escA, renderMd, openTask } from '../utils.js';
 
 export function renderAgenda(container, agendaRows, calToDT) {
   const box = container.createEl('div');
@@ -16,7 +16,7 @@ export function renderAgenda(container, agendaRows, calToDT) {
   }
 
   const lines = [];
-  agendaRows.forEach((e, i) => {
+  agendaRows.forEach(e => {
     // Meetings show their true clock time as written in the note (an 18:00 dinner
     // sync says 18:00); calToDT only maps into the working window. Tasks keep startCal.
     const time = e.kind === 'meet' && e.meetTrueTime != null ? e.meetTrueTime : calToDT(e.startCal).toFormat('HH:mm');
@@ -34,11 +34,9 @@ export function renderAgenda(container, agendaRows, calToDT) {
       `<span style="color:${col};font-weight:600;white-space:nowrap;">${time}</span>` +
       `<span style="color:${col};">${icon}</span>` +
       `<div style="flex:1;overflow:hidden;"><div>${renderMd(e.title)} <b>(${fmtHours(e.hours)}h)</b></div>` +
-      `<div style="color:gray;font-size:11px;">${esc(e.file)} \u00b7 ${dueTxt}${lateTag}</div></div>` +
-      `<span class="done-btn" data-path="${escA(e.path)}" data-line="${e.line}" title="Mark as done for today" style="align-self:center;color:gray;cursor:pointer;padding:0 6px;user-select:none;">\u2713</span></div>`
+      `<div style="color:gray;font-size:11px;">${esc(e.file)} \u00b7 ${dueTxt}${lateTag}</div></div></div>`
     );
   });
   box.innerHTML = lines.join('');
   box.querySelectorAll('.prow').forEach(el => openTask(el));
-  wireDoneButtons(box);
 }

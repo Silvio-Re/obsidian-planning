@@ -58,6 +58,10 @@ function nonWorkingSet(days) {
       set.add(d.toISOString().slice(0, 10));
       d = new Date(d.getTime() + 86400000);
     }
+    if (guard >= 4000 && d <= end) {
+      // Range over ~11 years: warn instead of silently dropping the tail.
+      console.warn(`[planning] nonWorkingDays range '${entry}' exceeds 4000 days; only the first 4000 were applied`);
+    }
   }
   return set;
 }
@@ -381,68 +385,9 @@ function makeTaskOpener(app) {
 // Shared openTask instance (will be initialized in main)
 let openTask = null;
 
-// Mark a task line as completed: flip the checkbox (- [ ] -> - [x]) AND append
-// the \u2705 completion marker with today's date, via vault.process (atomic
-// read-modify-write). The checkbox flip is what takes the task out of the plan
-// on the next refresh; the \u2705 date is what lets the Completed panel's date
-// filter place it. Returns true when the line was modified. Refuses when the
-// line already carries a completion date or when the line index is out of
-// range, so double clicks are no-ops. Lines without a checkbox are untouched.
-function makeTaskCompleter(app, todayISO) {
-  return (path, line) => {
-    try {
-      const file = app.vault.getAbstractFileByPath(path);
-      if (!file || file.path !== path) return false;
-      let changed = false;
-      app.vault.process(file, (text) => {
-        const lines = text.split('\n');
-        if (line < 0 || line >= lines.length) return text;
-        const raw = lines[line];
-        if (/\u2705/.test(raw)) return text;
-        // Keep the line's own EOL style: a CRLF line keeps its \r.
-        const eol = /\r$/.test(raw) ? '\r' : '';
-        const body = raw.replace(/\s*$/, '');
-        const flipped = body.replace(/^([ \t]*- \[) \]/, '$1x]');
-        if (flipped === body && !/- \[x\]/.test(body)) return text;
-        lines[line] = flipped + ' \u2705 ' + todayISO + eol;
-        changed = true;
-        return lines.join('\n');
-      });
-      return changed;
-    } catch (_) {
-      return false;
-    }
-  };
-}
-
-// Shared completeTask instance (initialized in main, once today is known).
-let completeTask = null;
-
 // Initialize openTask when dv is available
 if (typeof dv !== 'undefined' && dv.app) {
   openTask = makeTaskOpener(dv.app);
-  completeTask = makeTaskCompleter(dv.app, dv.date('today').toFormat('yyyy-MM-dd'));
-}
-
-// Attach the \u2713 done-buttons inside a rendered panel. Each button marks its
-// task line completed (\u2705 today) in the source note; the row then greys out.
-// The click stops propagation so the row's own open-on-click keeps working, and
-// a successful completion disables the button to make double clicks no-ops.
-function wireDoneButtons(panel) {
-  panel.querySelectorAll('.done-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      if (btn.dataset.done === '1') return;
-      const ok = completeTask && completeTask(btn.getAttribute('data-path'), parseInt(btn.getAttribute('data-line'), 10));
-      if (ok) {
-        btn.dataset.done = '1';
-        btn.style.color = 'rgb(129,181,98)';
-        btn.style.fontWeight = 'bold';
-        btn.title = 'Completed today \u2014 refresh to see the plan update';
-      }
-    });
-  });
 }
 
 
@@ -461,17 +406,9 @@ function wireDoneButtons(panel) {
 // drive collapse/expand directly.
 
 
-
 // ---------------------------------------------------------------------------
 // Shared tree construction
 // ---------------------------------------------------------------------------
-
-// Collect every group id under node (used by "fold all" / "unfold all").
-function collectGroupIds(node) {
-  let ids = [];
-  node.children.forEach(c => { ids.push(c.id); ids = ids.concat(collectGroupIds(c)); });
-  return ids;
-}
 
 // Split a vault path into the breadcrumb segments shown as group headers.
 function segsOf(path) {
@@ -480,48 +417,6 @@ function segsOf(path) {
   if (parts[0] === 'Projets') parts.shift();
   if (parts.length >= 2 && parts[parts.length - 1] === parts[parts.length - 2]) parts.pop();
   return parts.length ? parts : ['(root)'];
-}
-
-// ---------------------------------------------------------------------------
-// Gantt tree (Gantt uses two leaf kinds: tasks {k:'task', s, start} and meetings {k:'meet', l, start})
-// ---------------------------------------------------------------------------
-
-function ganttNodeStart(node) {
-  let mn = Infinity;
-  node.items.forEach(e => mn = Math.min(mn, e.start));
-  node.children.forEach(c => mn = Math.min(mn, ganttNodeStart(c)));
-  return mn === Infinity ? 0 : mn;
-}
-
-function ganttNodeTotal(node) {
-  let sum = 0;
-  for (const en of node.items) sum += en.k === 'task' ? (en.s.duration || 0) : (en.l.hours || 0);
-  for (const c of node.children.values()) sum += ganttNodeTotal(c);
-  return sum;
-}
-
-function ganttAnnotate(node) {
-  node.total = ganttNodeTotal(node);
-  node.children.forEach(c => ganttAnnotate(c));
-}
-
-function ganttCollectEntries(node, out) {
-  node.items.forEach(e => out.push(e));
-  node.children.forEach(c => ganttCollectEntries(c, out));
-  return out;
-}
-
-function ganttFlatten(node, collapsed, out, depth = 0) {
-  const kids = [...node.children.values()].sort((a, b) => ganttNodeStart(a) - ganttNodeStart(b));
-  for (const c of kids) {
-    out.push({ type: 'group', node: c, depth });
-    if (!collapsed.has(c.id)) {
-      ganttFlatten(c, collapsed, out, depth + 1);
-      c.items.slice().sort((a, b) => a.start - b.start).forEach(en =>
-        out.push(en.k === 'task' ? { type: 'task', s: en.s, depth: depth + 1 } : { type: 'meet', l: en.l, depth: depth + 1 })
-      );
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -564,47 +459,6 @@ function completionFlatten(node, collapsed, out, depth = 0) {
     }
   }
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Execution list
-// ---------------------------------------------------------------------------
-
-// Build the execution-list DOM lines for a schedule sequence. Pure apart from the
-// utils.js formatters (esc/escA/renderMd), which are safe in tests (dv is guarded).
-function buildLines(seq, calToDT) {
-  const lines = [];
-  let prevDate = null;
-  seq.forEach((e, i) => {
-    // Meetings keep their requested calendar date (a post-working-hours meeting must
-    // show on that day, not roll to the next). Other rows fall back to startCal.
-    const dateStr = e.meetDateStr || calToDT(e.startCal).toFormat('ccc dd LLL');
-    const showDate = dateStr !== prevDate;
-    if (showDate) prevDate = dateStr;
-
-    let col, lateStyle;
-    if (e.kind === 'meet') {
-      if (e.late) {
-        col = e.priority === 3 || e.priority === 4 ? 'rgb(128,128,128)' : (e.priority === 2 ? 'rgb(255,165,80)' : 'rgb(224,108,117)');
-        lateStyle = 'background:rgba(224,108,117,0.1);';
-      } else { col = 'rgb(198,120,221)'; lateStyle = ''; }
-    }
-    else if (e.late) {
-      if (e.priority === 3 || e.priority === 4) { col = 'rgb(128,128,128)'; lateStyle = 'background:rgba(128,128,128,0.1);'; }
-      else if (e.priority === 2) { col = 'rgb(255,165,80)'; lateStyle = 'background:rgba(255,165,80,0.1);'; }
-      else { col = 'rgb(224,108,117)'; lateStyle = 'background:rgba(224,108,117,0.1);'; }
-    } else { col = 'rgb(97,175,239)'; lateStyle = ''; }
-
-    const dueTxt = e.kind === 'meet' ? 'fixed' : `due ${esc(e.dl)}`;
-
-    if (showDate) {
-      lines.push(`<div style="background:rgba(97,175,239,0.08);padding:3px 8px;font-weight:600;color:rgb(97,175,239);font-size:12px;border-bottom:1px solid rgba(128,128,128,0.2);">${esc(dateStr)}</div>`);
-    }
-
-    lines.push(`<div class="prow" data-path="${escA(e.path)}" data-line="${e.line}" style="cursor:pointer;padding:3px 6px;border-bottom:1px solid rgba(128,128,128,0.15);${lateStyle}"><span style="color:${col};font-weight:bold;float:left;width:24px;text-align:right;margin-right:8px;">${i + 1}.</span><div style="overflow:hidden;"><div style="margin-bottom:1px;">${renderMd(e.title)} <b>(${fmtHours(e.hours)}h)</b></div><div style="color:gray;font-size:11px;">${esc(e.file)} \u00b7 ${dueTxt}${e.late ? ' \u00b7 <b>LATE</b>' : ''}</div></div></div>`);
-  });
-
-  return lines;
 }
 
 // ---------------------------------------------------------------------------

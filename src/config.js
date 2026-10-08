@@ -56,6 +56,10 @@ export function nonWorkingSet(days) {
       set.add(d.toISOString().slice(0, 10));
       d = new Date(d.getTime() + 86400000);
     }
+    if (guard >= 4000 && d <= end) {
+      // Range over ~11 years: warn instead of silently dropping the tail.
+      console.warn(`[planning] nonWorkingDays range '${entry}' exceeds 4000 days; only the first 4000 were applied`);
+    }
   }
   return set;
 }
