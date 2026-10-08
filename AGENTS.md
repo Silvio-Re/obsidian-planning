@@ -23,6 +23,31 @@ clean tree, tests passing, no duplicate tag), so it is safe to re-run.
 three in sync: bump `package.json` (+ `package-lock.json`), then `npm run build`. Do not hand-edit
 `planning.md`.
 
+## Release procedure
+
+When the user asks for a release, do NOT hand-roll the git dance — `scripts/release.mjs`
+(`npm run release`) already does it all, gated and atomically: bump `package.json` + lock,
+`npm run build`, test the OLD bundle then the REBUILT one, one `chore: release vX.Y.Z`
+commit, tag, push, `gh release create` with `planning.md` + `daily.md` as release assets.
+The steps, in order:
+
+1. **Auth pre-flight** (do this BEFORE the release, not at push time): `gh auth status` must
+   show a logged-in account with scopes **`repo` + `workflow`**. This repo's history carries
+   `.github/workflows/ci.yml`, so a push without `workflow` scope is rejected by GitHub with
+   `refusing to allow an OAuth App to create or update workflow`. If the scope is missing,
+   run `gh auth refresh -h github.com -s workflow` and brief the user exactly like this:
+   *"a one-time code appears immediately; authorize it at https://github.com/login/device;
+   then up to ~4 minutes of total silence is normal polling — do NOT abort; the
+   confirmation appears only at the very end."* Aborting the command kills the poller and
+   the new token is never written locally, even though the browser said success.
+2. Write `.github/release-notes.md`: first line = title (becomes the release name
+   `vX.Y.Z — <title>`), body = the changelog. Commit it (`docs: release notes for vX.Y.Z`).
+3. `npm run release` — or `-- --type patch|minor|major`, `-- --ver x.y.z`, `-- --dry-run`,
+   `-- --allow-dirty` (see the script header for semantics). Never force-push; the gates
+   forbid a dirty/behind tree by design.
+4. Report the release URL the script prints. Done — no manual `gh release create`, no
+   manual asset upload, no manual tag.
+
 ## Build & test
 
 - `npm test` runs a `pretest` hook that rebuilds and syntax-validates `planning.md`, then runs the
