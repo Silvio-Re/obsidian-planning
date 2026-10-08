@@ -24,11 +24,11 @@ function clip(s, k) {
 
 // Task opener utility - creates a function to open tasks in Obsidian
 function makeTaskOpener(app) {
-  // Select a task line in an open markdown view. `leafHint` is the leaf returned by the
-  // synchronous part of openFile(): when the file is opened in a NEW tab the workspace's
-  // leaf list only exposes it after the view loads, so searching leaves alone races the
-  // load and gives up after the retries. Preferring the hint first, then falling back to
-  // the workspace search, makes the line selection work for left and middle click alike.
+  // Select a task line in an open markdown view. `leafHint` is the leaf returned by
+  // openFile(): when the file is opened in a NEW tab the workspace's typed-leaf list
+  // only exposes it after the view loads, so the hint is the only reliable handle for
+  // a not-already-open file. The hint MUST be passed on EVERY retry — dropping it once
+  // made selection depend entirely on the racy workspace search (see task_opener.test.js).
   function selectLine(path, line, tries, leafHint) {
     // Prefer an already-open leaf (avoids hijacking a duplicate new tab), then fall back
     // to the opened leaf as hint — when the file opens in a NEW tab the workspace's leaf
@@ -47,19 +47,28 @@ function makeTaskOpener(app) {
       ed.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: len } }, true);
       ed.focus();
     }
-    else if (tries > 0) setTimeout(() => selectLine(path, line, tries - 1), 50);
+    else if (tries > 0) setTimeout(() => selectLine(path, line, tries - 1, leafHint), 100);
   }
-  function openAt(el) {
+  async function openAt(el) {
     const p = el.getAttribute('data-path');
     const l = parseInt(el.getAttribute('data-line'), 10);
     // getLeaf('tab') returns a leaf whose view is replaced asynchronously; openFile
-    // resolves with the same leaf, so pass it through as the selection hint.
+    // resolves with the same leaf once the view is ready, so await it before selecting
+    // and pass it as the hint. eState is Obsidian's built-in scroll-to-line: even if the
+    // JS selection below gives up on a very slow load, the editor itself positions at
+    // the line when it becomes ready.
     const leaf = app.workspace.getLeaf('tab');
-    leaf.openFile(app.vault.getAbstractFileByPath(p), {
-      active: true,
-      state: { line: l }
-    });
-    selectLine(p, l, 12, leaf);
+    try {
+      await leaf.openFile(app.vault.getAbstractFileByPath(p), {
+        active: true,
+        eState: { line: l }
+      });
+    } catch {
+      return; // file missing from vault / open failed — nothing to select
+    }
+    // view.editor can lag the resolved promise by a few frames: poll with the hint kept,
+    // up to ~3s (30 × 100ms) for slow storage (network shares, cold cache).
+    selectLine(p, l, 30, leaf);
   }
   return (el) => {
     el.addEventListener('click', (e) => {
