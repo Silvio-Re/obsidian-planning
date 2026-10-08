@@ -3,6 +3,7 @@
 
 import { fmtHours, CALENDAR } from '../constants.js';
 import { esc, escA, renderMd, makeTaskOpener, openTask } from '../utils.js';
+import { zoomX as zoomXPure, zoomY as zoomYPure, togglePin, clearPins } from '../render_model.js';
 
 /**
  * Render Capacity chart
@@ -143,29 +144,26 @@ export function renderCapacity(container, capacityData, SCHEDULE) {
         line.setAttribute('stroke', on ? 'rgb(97,175,239)' : 'rgba(97,175,239,0.5)');
       };
       toggle.addEventListener('click', () => {
-        if (pinned.has(day)) pinned.delete(day); else pinned.add(day);
+        togglePin(pinned, day);
         apply(); renderPanel();
       });
       lbls.forEach(el => openTask(el));
     });
   }
 
+  // Thin DOM adapters over the pure zoomX/zoomY: compute new scale + scroll, commit them, redraw.
   function zoomX(f, r) {
-    const before = scroll.scrollLeft + (r ?? 0.5) * scroll.clientWidth;
-    const oldW = totalDays * basePxPerDay * scaleX;
-    scaleX = Math.min(30, Math.max(0.4, scaleX * f));
+    const s = zoomXPure(f, { scaleX, totalDays, basePxPerDay, clientWidth: scroll.clientWidth, scrollLeft: scroll.scrollLeft, anchor: r ?? 0.5 });
+    scaleX = s.scaleX;
+    scroll.scrollLeft = s.scrollLeft;
     draw();
-    const newW = totalDays * basePxPerDay * scaleX;
-    if (oldW > 0) scroll.scrollLeft = before * (newW / oldW) - (r ?? 0.5) * scroll.clientWidth;
   }
 
   function zoomY(f, r) {
-    const before = scroll.scrollTop + (r ?? 0.5) * scroll.clientHeight;
-    const oldH = baseIH * scaleY;
-    scaleY = Math.min(20, Math.max(0.4, scaleY * f));
+    const s = zoomYPure(f, { scaleY, baseIH, clientHeight: scroll.clientHeight, scrollTop: scroll.scrollTop, anchor: r ?? 0.5 });
+    scaleY = s.scaleY;
+    scroll.scrollTop = s.scrollTop;
     draw();
-    const newH = baseIH * scaleY;
-    if (oldH > 0) scroll.scrollTop = before * (newH / oldH) - (r ?? 0.5) * scroll.clientHeight;
   }
 
   xIn.onclick = () => zoomX(1.3, 0.5);
@@ -173,7 +171,7 @@ export function renderCapacity(container, capacityData, SCHEDULE) {
   xReset.onclick = () => { scaleX = 1; scaleY = 1; draw(); scroll.scrollLeft = 0; };
   yIn.onclick = () => zoomY(1.3, 0.5);
   yOut.onclick = () => zoomY(1 / 1.3, 0.5);
-  clearBtn.onclick = () => { pinned.clear(); draw(); renderPanel(); };
+  clearBtn.onclick = () => { clearPins(pinned); draw(); renderPanel(); };
 
   scroll.addEventListener('wheel', (e) => {
     if (e.ctrlKey) {

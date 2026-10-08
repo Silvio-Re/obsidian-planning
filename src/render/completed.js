@@ -12,6 +12,7 @@
 
 import { fmtHours, CHECK, completionKey, filterByCompletionRange, isCompleteDate, currentMonth, monthStartKey, monthEndKey } from '../constants.js';
 import { esc, escA, clip, openTask } from '../utils.js';
+import { segsOf, completionStart, completionAnnotate, completionFlatten } from '../render_model.js';
 
 /**
  * Render completed tasks as a foldable tree by project/subproject.
@@ -48,20 +49,8 @@ export function renderCompleted(container, completed, today, opts = {}) {
   // --- Build the project/subproject tree (near-identical to gantt.js first column) ---
   const cRoot = { id: '', label: '', children: new Map(), items: [] };
 
-  function cSegsOf(path) {
-    const p = path.replace(/\.md$/, '');
-    const parts = p.split('/');
-    if (parts[0] === 'Projets') parts.shift();
-    if (parts.length >= 2 && parts[parts.length - 1] === parts[parts.length - 2]) parts.pop();
-    return parts.length ? parts : ['(root)'];
-  }
-  function cStartOf(t) {
-    // Order completed tasks within a branch by completion date (the gantt uses scheduling start).
-    const d = t.compDate ? Date.parse(t.compDate) : 0;
-    return Number.isFinite(d) ? d : 0;
-  }
   function cAddEntry(path, en) {
-    const parts = cSegsOf(path);
+    const parts = segsOf(path);
     let node = cRoot;
     let idAcc = '';
     parts.forEach(seg => {
@@ -74,41 +63,9 @@ export function renderCompleted(container, completed, today, opts = {}) {
     node.items.push(en);
   }
 
-  // Cumulative hours for a node = sum of its task hours + all descendant group totals.
-  function cNodeTotal(node) {
-    let sum = 0;
-    for (const en of node.items) sum += en.s.hours || 0;
-    for (const c of node.children.values()) sum += cNodeTotal(c);
-    return sum;
-  }
-  function cAnnotate(node) {
-    node.total = cNodeTotal(node);
-    node.children.forEach(c => cAnnotate(c));
-  }
 
-  // Earliest completion date among a node's descendants (used to sort branches).
-  function cNodeStart(node) {
-    let mn = Infinity;
-    node.items.forEach(e => mn = Math.min(mn, e.start));
-    node.children.forEach(c => mn = Math.min(mn, cNodeStart(c)));
-    return mn === Infinity ? 0 : mn;
-  }
 
   const cCollapsed = new Set();
-  function cFlatten(node, depth, out) {
-    const kids = [...node.children.values()].sort((a, b) => cNodeStart(a) - cNodeStart(b));
-    for (const c of kids) {
-      out.push({ type: 'group', node: c, depth });
-      if (!cCollapsed.has(c.id)) {
-        cFlatten(c, depth + 1, out);
-        c.items.slice().sort((a, b) => a.start - b.start).forEach(en =>
-          out.push(en.k === 'task' ? { type: 'task', s: en.s, depth: depth + 1 } : null)
-        );
-      }
-    }
-    return out;
-  }
-
   function cGroupRow(c, depth) {
     const isColl = cCollapsed.has(c.id);
     const tri = isColl ? '\u25b8' : '\u25be';
@@ -142,7 +99,7 @@ export function renderCompleted(container, completed, today, opts = {}) {
   }
 
   function rowsHtml() {
-    const rows = cFlatten(cRoot, 0, []);
+    const rows = completionFlatten(cRoot, cCollapsed, []);
     let html = '';
     rows.forEach(r => {
       if (r.type === 'group') html += cGroupRow(r.node, r.depth);
@@ -157,8 +114,8 @@ export function renderCompleted(container, completed, today, opts = {}) {
     cRoot.label = '';
     cRoot.children = new Map();
     cRoot.items = [];
-    visible.forEach(t => cAddEntry(t.path, { k: 'task', s: t, start: cStartOf(t) }));
-    cAnnotate(cRoot);
+    visible.forEach(t => cAddEntry(t.path, { k: 'task', s: t, start: completionStart(t) }));
+    completionAnnotate(cRoot);
   }
 
   // The text field is authoritative for reading the range; it falls back to the default
@@ -205,7 +162,7 @@ export function renderCompleted(container, completed, today, opts = {}) {
 
     // Re-bind handlers after each rebuild (querySelectorAll is a no-op in the test mock).
     box.querySelectorAll('.cfoldall').forEach(b => b.onclick = () => {
-      cFlatten(cRoot, 0, []).filter(r => r.type === 'group').forEach(r => cCollapsed.add(r.node.id));
+      completionFlatten(cRoot, cCollapsed, []).filter(r => r.type === 'group').forEach(r => cCollapsed.add(r.node.id));
       render();
     });
     box.querySelectorAll('.cunfoldall').forEach(b => b.onclick = () => { cCollapsed.clear(); render(); });

@@ -1,0 +1,48 @@
+name: ci
+
+# Read-only continuous integration.
+#   1. Build + validate + test a fresh bundle via `npm test`.
+#   2. Fail the job if the committed generated artifacts (planning.md / daily.md)
+#      are out of sync with src/. This keeps `npm run release` from shipping a
+#      stale dashboard and blocks PRs that edit src/ without regenerating.
+#
+# It deliberately does NOT commit, tag, or push anything. Those stay with
+# `npm run release` (see AGENTS.md).
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-artifacts:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Match the engines range; node --test discovery and resvg-js prebuilds
+        # both work here, and running two versions catches version-specific drift.
+        node-version: [20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # pretest rebuilds + syntax-validates planning.md/daily.md; the test job
+      # (including render_bundle.test.js) then exercises that fresh bundle.
+      - name: Build, validate and test
+        run: npm test
+
+      - name: Ensure generated artifacts are up-to-date
+        run: git diff --exit-code -- planning.md daily.md

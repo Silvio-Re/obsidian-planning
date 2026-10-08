@@ -26,8 +26,23 @@ three in sync: bump `package.json` (+ `package-lock.json`), then `npm run build`
 ## Build & test
 
 - `npm test` runs a `pretest` hook that rebuilds and syntax-validates `planning.md`, then runs the
-  test suite — you always test a fresh bundle.
+  test suite — you always test a fresh bundle. The suite is executed by `scripts/test-runner.js`,
+  which simply delegates to `node --test` (Node's built-in runner). The test files are listed
+  explicitly there (NOT auto-discovered): auto-discovery would also match
+  `test/harness/sandbox.mjs` and the runner itself, producing spurious passing files. When adding a
+  test file, register it in that allow-list too.
+- A read-only CI gate lives at `.github/workflows/ci.yml` (GitHub Actions; Node 20 + 22 matrix).
+  It runs `npm test` **and then** `git diff --exit-code -- planning.md daily.md`, so it fails if the
+  generated artifacts are out of sync with `src/`. Keep `planning.md` / `daily.md` in sync after
+  changing `src/` (`npm run build`), otherwise CI fails — never commit them stale.
 - After a change to `src/`, run `npm run build` so `planning.md` reflects the latest source.
+
+### Test flakiness (known)
+- `test/completed_filter.test.js` intermittently fails when the full suite runs in parallel
+  (`not ok ... test/completed_filter.test.js`, generic "test failed" — a child process is killed by
+  resource contention, not an assertion error). It is stable in isolation. The pressure comes from
+  `test/render_bundle.test.js` (heavy resvg PNG rendering). If it flakes, re-run; do not "fix" it as
+  if it were a logic bug.
 
 ## Emoji
 
@@ -39,5 +54,10 @@ type literal emoji, and never use 4-digit `\uXXXX` surrogate pairs.
 - The Gantt is built as a single SVG string. Use SVG `<tspan>` for inline styling — never inject
   HTML like `<b>` inside an SVG `<text>` (it breaks rendering of subsequent rows). The execution
   list is HTML and may use `<b>`.
-- `render/*.js` are only testable through the bundled `planning.md` (they import non-exported
-  helpers from `utils.js`). Test via `test/harness/sandbox.mjs`, not by importing them directly.
+- `render/*.js` are DOM glue (they build strings, attach handlers, call `openTask`) and still can
+  only run inside Obsidian. Their pure logic (tree building, sorting, zoom/pin math) is extracted
+  into `src/render_model.js`, which imports only `constants.js` and `utils.js` — so that logic is
+  now unit-testable directly, without bundling or a vm sandbox. Prefer importing `render_model.js`
+  in new tests over reaching into the render modules. `render_model.js` is part of both artifacts
+  (listed in `scripts/build.js`); keep its output byte-identical to before whenever you touch the
+  render modules — `test/render_bundle.test.js` asserts exact HTML/SVG strings.

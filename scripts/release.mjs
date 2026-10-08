@@ -76,12 +76,14 @@ if (!ok(run('npm', ['test']))) fail('npm test failed — fix tests before releas
 // --- release-notes metadata ---
 const notesPath = resolve(root, '.github', 'release-notes.md');
 if (!existsSync(notesPath)) fail('missing .github/release-notes.md');
-const title = readFileSync(notesPath, 'utf8')
-  .split('\n')
-  .find((l) => l.trim())
-  .replace(/^#+\s*/, '')
-  .trim();
+const lines = readFileSync(notesPath, 'utf8').split('\n');
+// Title = first non-empty line. It also becomes the release name ("vX.Y.Z — <title>"), so it must
+// NOT appear again inside the body — the body therefore starts AFTER this line.
+const first = lines.find((l) => l.trim());
+const title = first ? first.replace(/^#+\s*/, '').trim() : '';
 if (!title) fail('release-notes.md has an empty title (first non-empty line)');
+const body = lines.slice(lines.findIndex((l) => l.trim()) + 1).join('\n').trim();
+if (!body) fail('release-notes.md has changelog text after the title');
 
 // --- dry run: print the plan and stop before any side effect ---
 if (dry) {
@@ -124,7 +126,7 @@ if (!ok(run('git', ['push', '--tags']))) fail('push tag failed');
 // daily-note script (daily.md).
 // Name follows the pre-0.5.1 convention: "vX.Y.Z — <title>" so every release name carries its version.
 const releaseName = `${tag} — ${title}`;
-if (!ok(run('gh', ['release', 'create', tag, '--title', releaseName, '--notes-file', notesPath, 'planning.md', 'daily.md'])))
+if (!ok(run('gh', ['release', 'create', tag, '--title', releaseName, '--notes', body, 'planning.md', 'daily.md'])))
   fail('gh release create failed');
 
 console.log(`✓ released ${tag}: https://github.com/Silvio-Re/obsidian-planning/releases/tag/${tag}`);
